@@ -1,0 +1,32 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "App (PROD - Railway)",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "args": [
+        "--dart-define=ENV=prod"
+      ]
+    },
+    {
+      "name": "App (LOCAL - emulador Android)",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "args": [
+        "--dart-define=ENV=local"
+      ]
+    },
+    {
+      "name": "App (LOCAL - dispositivo fisico)",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "args": [
+        "--dart-define=ENV=local-device"
+      ]
+    }
+  ]
+}
