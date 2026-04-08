@@ -18,9 +18,9 @@ class AuthRepositoryImpl implements AuthRepository {
     required ApiClient apiClient,
     required AuthRemoteDataSource remote,
     required TokenStorage storage,
-  })  : _api = apiClient,
-        _remote = remote,
-        _storage = storage;
+  }) : _api = apiClient,
+       _remote = remote,
+       _storage = storage;
 
   final ApiClient _api;
   final AuthRemoteDataSource _remote;
@@ -37,7 +37,7 @@ class AuthRepositoryImpl implements AuthRepository {
   }) async {
     try {
       final res = await _remote.register({
-        'email': email,
+        'email': email.trim(),
         'password': password,
         'nombre': nombre,
         if (apellidoPaterno != null) 'apellidoPaterno': apellidoPaterno,
@@ -56,7 +56,7 @@ class AuthRepositoryImpl implements AuthRepository {
     required String password,
   }) async {
     try {
-      final res = await _remote.login(email: email, password: password);
+      final res = await _remote.login(email: email.trim(), password: password);
       return _persist(res);
     } on DioException catch (e) {
       throw _toReadable(e);
@@ -108,16 +108,36 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   Exception _toReadable(DioException e) {
+    // Mensaje de error del backend (validacion, conflict, unauthorized...).
     final data = e.response?.data;
     if (data is Map && data['message'] != null) {
       final msg = data['message'];
       return Exception(msg is List ? msg.join(', ') : msg.toString());
     }
-    if (e.type == DioExceptionType.connectionError) {
-      return Exception(
-        'No pudimos conectar con el servidor. Revisa tu conexion.',
-      );
+
+    // Errores de red diferenciados — ayuda a diagnosticar problemas de
+    // conectividad sin tener que mirar logs nativos.
+    switch (e.type) {
+      case DioExceptionType.connectionTimeout:
+      case DioExceptionType.sendTimeout:
+      case DioExceptionType.receiveTimeout:
+        return Exception(
+          'El servidor tardo demasiado en responder. Intenta de nuevo.',
+        );
+      case DioExceptionType.connectionError:
+        return Exception(
+          'No pudimos conectar con el servidor (${_api.baseUrl}). '
+          'Revisa tu internet o que el backend este arriba.',
+        );
+      case DioExceptionType.badCertificate:
+        return Exception('Certificado SSL invalido del servidor.');
+      case DioExceptionType.cancel:
+        return Exception('Peticion cancelada.');
+      case DioExceptionType.unknown:
+      case DioExceptionType.badResponse:
+        return Exception(
+          'Ocurrio un error inesperado: ${e.message ?? e.type.name}',
+        );
     }
-    return Exception('Ocurrio un error. Intenta de nuevo.');
   }
 }

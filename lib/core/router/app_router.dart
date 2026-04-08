@@ -12,7 +12,10 @@ import '../../features/checkin/presentation/pages/qr_pass_page.dart';
 import '../../features/clinic_map/presentation/pages/clinic_map_page.dart';
 import '../../features/home/presentation/pages/home_dashboard_page.dart';
 import '../../features/home/presentation/pages/home_shell.dart';
+import '../../features/profile/presentation/pages/profile_page.dart';
 import '../../features/results/presentation/pages/results_list_page.dart';
+import '../../features/services/presentation/pages/services_categories_page.dart';
+import '../../features/services/presentation/pages/services_list_page.dart';
 import '../../features/studies/presentation/pages/preparations_page.dart';
 import '../../features/studies/presentation/pages/studies_order_page.dart';
 import '../../features/survey/presentation/pages/satisfaction_survey_page.dart';
@@ -86,6 +89,14 @@ final goRouterProvider = Provider<GoRouter>((ref) {
               ),
             ],
           ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/profile',
+                builder: (_, __) => const ProfilePage(),
+              ),
+            ],
+          ),
         ],
       ),
 
@@ -135,6 +146,18 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         path: '/clinic-map',
         parentNavigatorKey: _rootKey,
         builder: (_, __) => const ClinicMapPage(),
+      ),
+      GoRoute(
+        path: '/services',
+        parentNavigatorKey: _rootKey,
+        builder: (_, __) => const ServicesCategoriesPage(),
+      ),
+      GoRoute(
+        path: '/services/:idEstudio',
+        parentNavigatorKey: _rootKey,
+        builder: (_, state) => ServicesListPage(
+          idEstudio: int.parse(state.pathParameters['idEstudio']!),
+        ),
       ),
       GoRoute(
         path: '/survey',

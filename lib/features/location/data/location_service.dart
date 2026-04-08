@@ -2,15 +2,15 @@ import 'package:geolocator/geolocator.dart';
 
 import '../domain/user_location.dart';
 
-/// Wrapper sobre `geolocator` con manejo de permisos y fallback.
+/// Wrapper sobre `geolocator` con manejo de permisos.
 ///
-/// Si el usuario niega permisos o el dispositivo no tiene GPS, devolvemos
-/// `UserLocation.fallback` (Coyoacan) para que el flujo no se rompa.
+/// Devuelve `null` cuando no hay permisos / GPS / posicion disponible —
+/// la app debe mostrar un estado vacio en lugar de inventar coordenadas.
 class LocationService {
-  Future<UserLocation> getCurrentLocation() async {
+  Future<UserLocation?> getCurrentLocation() async {
     try {
       final servicesEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!servicesEnabled) return UserLocation.fallback;
+      if (!servicesEnabled) return null;
 
       var permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
@@ -18,7 +18,7 @@ class LocationService {
       }
       if (permission == LocationPermission.denied ||
           permission == LocationPermission.deniedForever) {
-        return UserLocation.fallback;
+        return null;
       }
 
       final pos = await Geolocator.getCurrentPosition(
@@ -29,7 +29,7 @@ class LocationService {
       );
       return UserLocation(lat: pos.latitude, lng: pos.longitude);
     } catch (_) {
-      return UserLocation.fallback;
+      return null;
     }
   }
 }

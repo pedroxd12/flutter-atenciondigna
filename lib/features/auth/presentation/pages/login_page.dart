@@ -6,7 +6,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/app_logo.dart';
 import '../providers/auth_providers.dart';
 
-/// Pantalla de inicio de sesion. Diseno accesible: tipografias 18+,
+/// Pantalla de inicio de sesion. Diseno accesible: tipografias 16+,
 /// inputs grandes, botones de 58 px de alto, paleta verde Salud Digna.
 class LoginPage extends ConsumerStatefulWidget {
   const LoginPage({super.key});
@@ -20,6 +20,11 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   final _emailCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
   bool _obscure = true;
+
+  // Validacion de correo: usuario@dominio.tld con TLD de 2+ letras.
+  static final _emailRegex = RegExp(
+    r"^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$",
+  );
 
   @override
   void dispose() {
@@ -63,7 +68,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
             child: Container(
               constraints: const BoxConstraints(maxWidth: 440),
               padding: const EdgeInsets.all(28),
@@ -81,11 +86,12 @@ class _LoginPageState extends ConsumerState<LoginPage> {
               ),
               child: Form(
                 key: _formKey,
+                autovalidateMode: AutovalidateMode.onUserInteraction,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const Center(child: AppLogo(height: 84)),
-                    const SizedBox(height: 6),
+                    const Center(child: AppLogo(height: 76)),
+                    const SizedBox(height: 8),
                     const Center(
                       child: Text(
                         'LA ATENCION DIGNA ES PARA TODOS',
@@ -97,68 +103,55 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 26),
+                    const SizedBox(height: 24),
                     const Text(
-                      'Bienvenido',
+                      'Bienvenido de nuevo',
                       style: TextStyle(
-                        fontSize: 16,
+                        fontSize: 15,
                         color: AppColors.textSecondary,
                       ),
                     ),
                     const SizedBox(height: 4),
-                    const Text.rich(
-                      TextSpan(
-                        children: [
-                          TextSpan(
-                            text: 'Inicia ',
-                            style: TextStyle(
-                              fontSize: 26,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
-                          TextSpan(
-                            text: 'sesion\n',
-                            style: TextStyle(
-                              fontSize: 26,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.primary,
-                            ),
-                          ),
-                          TextSpan(
-                            text: 'en tu cuenta',
-                            style: TextStyle(
-                              fontSize: 26,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
-                        ],
+                    const Text(
+                      'Inicia sesion',
+                      style: TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.textPrimary,
                       ),
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 22),
                     const _FieldLabel('CORREO ELECTRONICO'),
                     TextFormField(
                       controller: _emailCtrl,
                       keyboardType: TextInputType.emailAddress,
                       autofillHints: const [AutofillHints.email],
-                      style: const TextStyle(fontSize: 16),
+                      style: const TextStyle(
+                        fontSize: 16,
+                        color: AppColors.textPrimary,
+                      ),
                       decoration: const InputDecoration(
                         hintText: 'tucorreo@ejemplo.com',
                       ),
                       validator: (v) {
-                        if (v == null || v.isEmpty) return 'Escribe tu correo';
-                        if (!v.contains('@')) return 'Correo invalido';
+                        final value = v?.trim() ?? '';
+                        if (value.isEmpty) return 'Escribe tu correo';
+                        if (!_emailRegex.hasMatch(value)) {
+                          return 'Correo invalido (ej. ana@ejemplo.com)';
+                        }
                         return null;
                       },
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 14),
                     const _FieldLabel('CONTRASENA'),
                     TextFormField(
                       controller: _passwordCtrl,
                       obscureText: _obscure,
                       autofillHints: const [AutofillHints.password],
-                      style: const TextStyle(fontSize: 16),
+                      style: const TextStyle(
+                        fontSize: 16,
+                        color: AppColors.textPrimary,
+                      ),
                       decoration: InputDecoration(
                         hintText: '••••••••',
                         suffixIcon: IconButton(
@@ -176,10 +169,13 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                         if (v == null || v.isEmpty) {
                           return 'Escribe tu contrasena';
                         }
+                        if (v.length < 8) {
+                          return 'Minimo 8 caracteres';
+                        }
                         return null;
                       },
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 4),
                     Align(
                       alignment: Alignment.centerRight,
                       child: TextButton(
@@ -187,7 +183,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                         child: const Text('Olvidaste tu contrasena?'),
                       ),
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 8),
                     FilledButton(
                       onPressed: loading ? null : _submit,
                       child: loading
@@ -201,7 +197,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                             )
                           : const Text('Iniciar Sesion'),
                     ),
-                    const SizedBox(height: 18),
+                    const SizedBox(height: 22),
                     const Row(
                       children: [
                         Expanded(child: Divider(color: AppColors.border)),

@@ -28,14 +28,20 @@ class BranchesRemoteDataSource {
     return data.cast<Map<String, dynamic>>().map(_fromJson).toList();
   }
 
+  Future<Branch> getById(int id) async {
+    final res = await _api.dio.get<Map<String, dynamic>>('/sucursales/$id');
+    return _fromJson(res.data!);
+  }
+
   Branch _fromJson(Map<String, dynamic> j) => Branch(
     id: (j['id'] as num).toInt(),
     name: j['name'] as String,
-    address: j['address'] as String,
-    distanceKm: (j['distanceKm'] as num).toDouble(),
-    waitTimeMinutes: (j['waitTimeMinutes'] as num).toDouble(),
-    saturationLevel: j['saturationLevel'] as String,
+    address: j['address'] as String? ?? '',
+    distanceKm: (j['distanceKm'] as num?)?.toDouble() ?? 0,
+    waitTimeMinutes: (j['waitTimeMinutes'] as num?)?.toDouble() ?? 0,
+    saturationLevel: j['saturationLevel'] as String? ?? 'bajo',
     lat: (j['lat'] as num).toDouble(),
     lng: (j['lng'] as num).toDouble(),
+    mapaGeojson: j['mapaGeojson'] as Map<String, dynamic>?,
   );
 }

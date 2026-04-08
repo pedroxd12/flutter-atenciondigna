@@ -47,13 +47,16 @@ class HomeDashboardPage extends ConsumerWidget {
                     ],
                   ),
                 ),
-                CircleAvatar(
-                  radius: 26,
-                  backgroundColor: AppColors.primarySoft,
-                  child: const Icon(
-                    Icons.person,
-                    color: AppColors.primary,
-                    size: 28,
+                GestureDetector(
+                  onTap: () => context.go('/profile'),
+                  child: CircleAvatar(
+                    radius: 26,
+                    backgroundColor: AppColors.primarySoft,
+                    child: const Icon(
+                      Icons.person,
+                      color: AppColors.primary,
+                      size: 28,
+                    ),
                   ),
                 ),
               ],
@@ -151,6 +154,13 @@ class HomeDashboardPage extends ConsumerWidget {
               subtitle: 'Elige sucursal y agenda en 3 pasos',
               icon: Icons.add_circle,
               onTap: () => context.push('/request-service'),
+            ),
+            const SizedBox(height: 12),
+            _QuickActionCard(
+              title: 'Catalogo de servicios',
+              subtitle: 'Paquetes y precios de Salud Digna',
+              icon: Icons.medical_services,
+              onTap: () => context.push('/services'),
             ),
             const SizedBox(height: 12),
 

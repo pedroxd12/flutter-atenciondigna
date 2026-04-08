@@ -11,7 +11,7 @@ nativa: solo `flutter run`. Cuando quieras conectar con servicios reales
 | Modo  | Comando | Qué usa |
 |---|---|---|
 | Mock  | `flutter run` | Datos en memoria, login fake, sin red |
-| Real  | `flutter run --dart-define=USE_REMOTE=true --dart-define=API_BASE_URL=https://atencion-digna-api.up.railway.app` | Backend NestJS real + Firebase + GPS |
+| Real  | `flutter run --dart-define=USE_REMOTE=true --dart-define=API_BASE_URL=https://backend-atenciondigna-production.up.railway.app` | Backend NestJS real + Firebase + GPS |
 
 El switch está en [`lib/core/config/app_config.dart`](lib/core/config/app_config.dart).
 Cada provider de Riverpod elige automáticamente la implementación correcta:
@@ -188,10 +188,10 @@ flutter run --dart-define=USE_REMOTE=true
 # correr contra backend en Railway
 flutter run \
   --dart-define=USE_REMOTE=true \
-  --dart-define=API_BASE_URL=https://atencion-digna-api.up.railway.app
+  --dart-define=API_BASE_URL=https://backend-atenciondigna-production.up.railway.app
 
 # build de release Android
 flutter build apk --release \
   --dart-define=USE_REMOTE=true \
-  --dart-define=API_BASE_URL=https://atencion-digna-api.up.railway.app
+  --dart-define=API_BASE_URL=https://backend-atenciondigna-production.up.railway.app
 ```

@@ -6,7 +6,9 @@ import '../../../../core/theme/app_colors.dart';
 import '../../domain/entities/wait_status.dart';
 import '../providers/waiting_providers.dart';
 
-/// Sala de espera — basada en el mockup #3 (folio + tiempo + #posicion + lista).
+/// Sala de espera — toma toda la informacion de la BD via WaitingService.
+/// Sin folios inventados ni nombres falsos: si no hay cola, muestra el
+/// estado vacio correspondiente.
 class LiveWaitingPage extends ConsumerWidget {
   const LiveWaitingPage({super.key});
 
@@ -16,279 +18,297 @@ class LiveWaitingPage extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(title: const Text('Sala de espera')),
+      appBar: AppBar(
+        title: const Text('Sala de espera'),
+        backgroundColor: AppColors.surface,
+        foregroundColor: AppColors.textPrimary,
+        elevation: 0,
+      ),
       body: statusAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Error: $e')),
+        error: (e, _) => _ErrorState(
+          message: 'No pudimos obtener tu estado de espera',
+          onRetry: () => ref.invalidate(waitStatusStreamProvider),
+        ),
         data: (status) {
+          if (!status.hasActiveService) return const _NoActiveAppointment();
           if (status.isYourTurn) return _YourTurnView(status: status);
-          return ListView(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
-            children: [
-              // Folio
-              Center(
-                child: Column(
-                  children: [
-                    const Text(
-                      'FOLIO',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textSecondary,
-                        letterSpacing: 1.2,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'A${(status.peopleAhead * 137 + 3000).toString().padLeft(4, '0')}',
-                      style: const TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 2,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-              Container(
-                padding: const EdgeInsets.all(28),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [AppColors.primary, AppColors.primaryDark],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(24),
-                ),
-                child: Column(
-                  children: [
-                    Text(
-                      status.currentStudy,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w800,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      status.area,
-                      style: const TextStyle(color: Colors.white70),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(18),
-                        child: Column(
-                          children: [
-                            const Text(
-                              'Tiempo estimado',
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: AppColors.textSecondary,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              '${status.estimatedMinutes.toStringAsFixed(0)} min',
-                              style: const TextStyle(
-                                fontSize: 28,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(18),
-                        child: Column(
-                          children: [
-                            const Text(
-                              'Tu posicion',
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: AppColors.textSecondary,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              '#${status.peopleAhead + 1} en la fila',
-                              style: const TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 22),
-              const Text(
-                'LISTA DE ESPERA',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.textSecondary,
-                  letterSpacing: 1,
-                ),
-              ),
-              const SizedBox(height: 10),
-              ...List.generate(
-                (status.peopleAhead.clamp(0, 5)),
-                (i) => Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: _PatientRow(
-                    name: 'Paciente ${i + 1}',
-                    study: status.currentStudy,
-                    isCurrent: i == 0,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Row(
-                    children: [
-                      const CircleAvatar(
-                        backgroundColor: AppColors.primarySoft,
-                        child: Icon(Icons.person, color: AppColors.primary),
-                      ),
-                      const SizedBox(width: 12),
-                      const Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Tu turno',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            Text(
-                              'Te avisaremos cuando sea tu momento',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: AppColors.textSecondary,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppColors.warning.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: const Text(
-                          'En espera',
-                          style: TextStyle(
-                            color: AppColors.warning,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          );
+          return _WaitingBody(status: status);
         },
       ),
     );
   }
 }
 
-class _PatientRow extends StatelessWidget {
-  const _PatientRow({
-    required this.name,
-    required this.study,
-    required this.isCurrent,
-  });
-  final String name;
-  final String study;
-  final bool isCurrent;
+class _WaitingBody extends ConsumerWidget {
+  const _WaitingBody({required this.status});
+  final WaitStatus status;
 
   @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Row(
-          children: [
-            const CircleAvatar(
-              backgroundColor: AppColors.inputFill,
-              child: Icon(Icons.person, color: AppColors.textSecondary),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
+  Widget build(BuildContext context, WidgetRef ref) {
+    final queueAsync = ref.watch(waitQueueProvider);
+
+    return RefreshIndicator(
+      onRefresh: () async {
+        ref.invalidate(waitQueueProvider);
+      },
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+        children: [
+          if (status.folio != null)
+            Center(
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    name,
-                    style: const TextStyle(
-                      fontSize: 15,
+                  const Text(
+                    'FOLIO',
+                    style: TextStyle(
+                      fontSize: 11,
                       fontWeight: FontWeight.w700,
+                      color: AppColors.textSecondary,
+                      letterSpacing: 1.2,
                     ),
                   ),
+                  const SizedBox(height: 2),
                   Text(
-                    isCurrent ? 'En atencion ahora' : study,
+                    status.folio!,
                     style: const TextStyle(
-                      fontSize: 12,
-                      color: AppColors.textSecondary,
+                      fontSize: 28,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 2,
                     ),
                   ),
                 ],
               ),
             ),
+          if (status.folio == null)
             Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 10,
-                vertical: 4,
-              ),
+              padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: isCurrent
-                    ? AppColors.primary.withValues(alpha: 0.15)
-                    : AppColors.inputFill,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Text(
-                isCurrent ? 'En atencion' : 'En espera',
-                style: TextStyle(
-                  color: isCurrent
-                      ? AppColors.primary
-                      : AppColors.textSecondary,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
+                color: AppColors.warning.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: AppColors.warning.withValues(alpha: 0.4),
                 ),
               ),
+              child: const Row(
+                children: [
+                  Icon(Icons.info_outline, color: AppColors.warning),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Aun no se asigna folio. Acude a recepcion o realiza tu check-in.',
+                      style: TextStyle(fontSize: 13),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ],
+          const SizedBox(height: 24),
+          Container(
+            padding: const EdgeInsets.all(28),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [AppColors.primary, AppColors.primaryDark],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: Column(
+              children: [
+                Text(
+                  status.currentStudy,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  status.area,
+                  style: const TextStyle(color: Colors.white70),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(18),
+                    child: Column(
+                      children: [
+                        const Text(
+                          'Tiempo estimado',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          '${status.estimatedMinutes.toStringAsFixed(0)} min',
+                          style: const TextStyle(
+                            fontSize: 28,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(18),
+                    child: Column(
+                      children: [
+                        const Text(
+                          'Tu posicion',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          '#${status.peopleAhead + 1} en la fila',
+                          style: const TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 22),
+          const Text(
+            'LISTA DE ESPERA',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              color: AppColors.textSecondary,
+              letterSpacing: 1,
+            ),
+          ),
+          const SizedBox(height: 10),
+          queueAsync.when(
+            loading: () => const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+            error: (_, __) => const _InlineEmpty(
+              icon: Icons.info_outline,
+              text: 'No pudimos cargar la lista de espera',
+            ),
+            data: (queue) {
+              if (queue.isEmpty) {
+                return const _InlineEmpty(
+                  icon: Icons.people_outline,
+                  text: 'Aun no hay otros pacientes en la cola',
+                );
+              }
+              return Column(
+                children: queue
+                    .map(
+                      (q) => Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: _PatientRow(item: q),
+                      ),
+                    )
+                    .toList(),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PatientRow extends StatelessWidget {
+  const _PatientRow({required this.item});
+  final QueueItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    final highlight = item.isMine;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: highlight ? AppColors.primarySoft : AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: highlight ? AppColors.primary : AppColors.border,
+          width: highlight ? 1.4 : 1,
         ),
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(
+            backgroundColor: highlight
+                ? AppColors.primary
+                : AppColors.inputFill,
+            child: Text(
+              item.initials,
+              style: TextStyle(
+                color: highlight ? Colors.white : AppColors.textSecondary,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.isMine ? 'Tu turno' : 'Folio ${item.folio}',
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                Text(
+                  item.isCurrent ? 'En atencion ahora' : item.estudio,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: item.isCurrent
+                  ? AppColors.primary.withValues(alpha: 0.15)
+                  : AppColors.inputFill,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              item.isCurrent ? 'En atencion' : 'Posicion ${item.posicion}',
+              style: TextStyle(
+                color: item.isCurrent
+                    ? AppColors.primary
+                    : AppColors.textSecondary,
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -325,7 +345,7 @@ class _YourTurnView extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            'Dirigete a ${status.area}',
+            status.area.isEmpty ? 'Acude al consultorio asignado' : 'Dirigete a ${status.area}',
             textAlign: TextAlign.center,
             style: const TextStyle(fontSize: 17),
           ),
@@ -335,6 +355,102 @@ class _YourTurnView extends StatelessWidget {
             icon: const Icon(Icons.directions_walk),
             label: const Text('Como llego'),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NoActiveAppointment extends StatelessWidget {
+  const _NoActiveAppointment();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.event_busy,
+              size: 64,
+              color: AppColors.textSecondary,
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'No tienes una cita activa',
+              style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Cuando agendes y hagas check-in en una sucursal veras tu posicion en la sala de espera.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 18),
+            FilledButton.icon(
+              onPressed: () => context.push('/request-service'),
+              icon: const Icon(Icons.add_circle),
+              label: const Text('Solicitar un estudio'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _InlineEmpty extends StatelessWidget {
+  const _InlineEmpty({required this.icon, required this.text});
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: AppColors.textSecondary),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 13,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ErrorState extends StatelessWidget {
+  const _ErrorState({required this.message, required this.onRetry});
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.cloud_off,
+              size: 56, color: AppColors.textSecondary),
+          const SizedBox(height: 12),
+          Text(message),
+          const SizedBox(height: 12),
+          FilledButton(onPressed: onRetry, child: const Text('Reintentar')),
         ],
       ),
     );

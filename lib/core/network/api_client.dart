@@ -22,16 +22,20 @@ class ApiClient {
             'Content-Type': 'application/json',
             'Accept': 'application/json',
           },
-          // Aceptamos 4xx para que el repo decida que hacer (mejor mensajes
-          // de error tipo "credenciales invalidas" en lugar de "exception").
-          validateStatus: (status) => status != null && status < 500,
+          // Solo 2xx/3xx se consideran exito. 4xx y 5xx lanzan DioException
+          // y los repos los traducen a mensajes legibles via _toReadable.
+          validateStatus: (status) => status != null && status < 400,
         ),
       ) {
+    // Log de la URL base al iniciar — util para confirmar contra que backend
+    // estamos pegando (Railway, local, etc.).
+    debugPrint('[ApiClient] baseUrl = ${_dio.options.baseUrl}');
+
     // Solo en debug imprimimos las peticiones — en release queda silencioso.
     if (kDebugMode) {
       _dio.interceptors.add(
         LogInterceptor(
-          request: false,
+          request: true,
           requestHeader: false,
           requestBody: true,
           responseHeader: false,

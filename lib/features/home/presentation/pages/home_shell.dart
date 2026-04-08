@@ -15,6 +15,7 @@ class HomeShell extends StatelessWidget {
     _NavItem(Icons.science_outlined, Icons.science_rounded, 'Estudios'),
     _NavItem(Icons.access_time, Icons.access_time_filled, 'Espera'),
     _NavItem(Icons.folder_outlined, Icons.folder_rounded, 'Resultados'),
+    _NavItem(Icons.person_outline, Icons.person_rounded, 'Perfil'),
   ];
 
   @override

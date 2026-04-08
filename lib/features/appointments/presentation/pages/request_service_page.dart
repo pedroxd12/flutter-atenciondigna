@@ -5,11 +5,13 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../branches/domain/entities/branch.dart';
+import '../../../studies/domain/entities/study_catalog_item.dart';
+import '../../../studies/presentation/providers/studies_providers.dart';
 import '../providers/appointments_providers.dart';
 
 /// Flujo simple en 3 pasos pensado para adultos mayores:
-///   1. Elegir tipo de estudio
-///   2. Elegir sucursal
+///   1. Elegir tipo de estudio (catalogo viene 100% de la BD)
+///   2. Elegir sucursal (sucursales reales con su tiempo de espera)
 ///   3. Elegir fecha y confirmar
 class RequestServicePage extends ConsumerStatefulWidget {
   const RequestServicePage({super.key});
@@ -23,14 +25,6 @@ class _RequestServicePageState extends ConsumerState<RequestServicePage> {
   Branch? _branch;
   DateTime? _date;
   bool _submitting = false;
-
-  static const _availableStudies = [
-    (id: 2, name: 'Laboratorio', icon: Icons.science),
-    (id: 5, name: 'Rayos X', icon: Icons.medical_information),
-    (id: 6, name: 'Ultrasonido', icon: Icons.monitor_heart),
-    (id: 3, name: 'Mastografia', icon: Icons.favorite_border),
-    (id: 9, name: 'Electrocardiograma', icon: Icons.favorite),
-  ];
 
   bool get _canSubmit =>
       _selectedStudies.isNotEmpty && _branch != null && _date != null;
@@ -107,8 +101,26 @@ class _RequestServicePageState extends ConsumerState<RequestServicePage> {
     }
   }
 
+  IconData _iconFor(String nombre) {
+    final n = nombre.toUpperCase();
+    if (n.contains('LABORATORIO')) return Icons.science;
+    if (n.contains('RAYOS')) return Icons.medical_information;
+    if (n.contains('ULTRASONIDO')) return Icons.monitor_heart;
+    if (n.contains('MASTOGRAFIA')) return Icons.favorite_border;
+    if (n.contains('ELECTRO')) return Icons.favorite;
+    if (n.contains('PAPANICOLAOU')) return Icons.female;
+    if (n.contains('DENSITO')) return Icons.accessibility_new;
+    if (n.contains('NUTRI')) return Icons.restaurant;
+    if (n.contains('TOMOGRAFIA')) return Icons.scanner;
+    if (n.contains('RESONANCIA')) return Icons.hub;
+    if (n.contains('OPTICA')) return Icons.visibility;
+    return Icons.local_hospital;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final catalogAsync = ref.watch(studiesCatalogProvider);
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(title: const Text('Solicitar estudio')),
@@ -121,56 +133,37 @@ class _RequestServicePageState extends ConsumerState<RequestServicePage> {
             done: _selectedStudies.isNotEmpty,
           ),
           const SizedBox(height: 12),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: _availableStudies.map((s) {
-              final selected = _selectedStudies.contains(s.id);
-              return GestureDetector(
-                onTap: () => setState(() {
-                  if (selected) {
-                    _selectedStudies.remove(s.id);
-                  } else {
-                    _selectedStudies.add(s.id);
-                  }
-                }),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 12,
-                  ),
-                  decoration: BoxDecoration(
-                    color: selected ? AppColors.primary : AppColors.surface,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                      color: selected
-                          ? AppColors.primaryDark
-                          : AppColors.border,
-                      width: 1.5,
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        s.icon,
-                        size: 18,
-                        color: selected ? Colors.white : AppColors.primary,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        s.name,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: selected ? Colors.white : AppColors.textPrimary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+          catalogAsync.when(
+            loading: () => const Padding(
+              padding: EdgeInsets.symmetric(vertical: 24),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+            error: (e, _) => _CatalogError(
+              onRetry: () => ref.invalidate(studiesCatalogProvider),
+            ),
+            data: (catalog) {
+              if (catalog.isEmpty) {
+                return const _EmptyCatalog();
+              }
+              return Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: catalog
+                    .map((s) => _StudyChip(
+                          item: s,
+                          icon: _iconFor(s.nombre),
+                          selected: _selectedStudies.contains(s.id),
+                          onTap: () => setState(() {
+                            if (_selectedStudies.contains(s.id)) {
+                              _selectedStudies.remove(s.id);
+                            } else {
+                              _selectedStudies.add(s.id);
+                            }
+                          }),
+                        ))
+                    .toList(),
               );
-            }).toList(),
+            },
           ),
           const SizedBox(height: 24),
           _StepHeader(number: 2, title: 'Donde?', done: _branch != null),
@@ -243,6 +236,67 @@ class _RequestServicePageState extends ConsumerState<RequestServicePage> {
   }
 }
 
+class _StudyChip extends StatelessWidget {
+  const _StudyChip({
+    required this.item,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+  });
+  final StudyCatalogItem item;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  String _capitalize(String s) =>
+      s.isEmpty ? s : s[0].toUpperCase() + s.substring(1).toLowerCase();
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.primary : AppColors.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: selected ? AppColors.primaryDark : AppColors.border,
+            width: 1.5,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 18,
+              color: selected ? Colors.white : AppColors.primary,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              _capitalize(item.nombre),
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: selected ? Colors.white : AppColors.textPrimary,
+              ),
+            ),
+            if (item.requiereOrdenMedica) ...[
+              const SizedBox(width: 6),
+              Icon(
+                Icons.warning_amber_rounded,
+                size: 14,
+                color: selected ? Colors.white : AppColors.warning,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _StepHeader extends StatelessWidget {
   const _StepHeader({
     required this.number,
@@ -280,6 +334,63 @@ class _StepHeader extends StatelessWidget {
           style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
         ),
       ],
+    );
+  }
+}
+
+class _EmptyCatalog extends StatelessWidget {
+  const _EmptyCatalog();
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: const Row(
+        children: [
+          Icon(Icons.science_outlined, color: AppColors.textSecondary),
+          SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'No hay estudios registrados en la base de datos.',
+              style: TextStyle(color: AppColors.textSecondary),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CatalogError extends StatelessWidget {
+  const _CatalogError({required this.onRetry});
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.cloud_off, color: AppColors.textSecondary),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Text(
+              'No pudimos cargar el catalogo de estudios.',
+              style: TextStyle(color: AppColors.textSecondary),
+            ),
+          ),
+          TextButton(onPressed: onRetry, child: const Text('Reintentar')),
+        ],
+      ),
     );
   }
 }

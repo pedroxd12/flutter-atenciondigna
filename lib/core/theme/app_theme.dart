@@ -15,12 +15,19 @@ class AppTheme {
         primary: AppColors.primary,
         secondary: AppColors.primaryDark,
         surface: AppColors.surface,
+        onSurface: AppColors.textPrimary,
+        onPrimary: Colors.white,
       ),
       scaffoldBackgroundColor: AppColors.background,
       visualDensity: VisualDensity.standard,
     );
 
     return base.copyWith(
+      textSelectionTheme: const TextSelectionThemeData(
+        cursorColor: AppColors.primary,
+        selectionColor: AppColors.primarySoft,
+        selectionHandleColor: AppColors.primary,
+      ),
       appBarTheme: const AppBarTheme(
         backgroundColor: AppColors.background,
         surfaceTintColor: Colors.transparent,
@@ -104,6 +111,11 @@ class AppTheme {
           color: AppColors.textSecondary,
           fontSize: 15,
         ),
+        floatingLabelStyle: const TextStyle(
+          color: AppColors.primaryDark,
+          fontSize: 15,
+          fontWeight: FontWeight.w600,
+        ),
         hintStyle: const TextStyle(
           color: AppColors.textSecondary,
           fontSize: 16,
@@ -127,19 +139,30 @@ class AppTheme {
             displayColor: AppColors.textPrimary,
           )
           .copyWith(
-            bodyLarge: const TextStyle(fontSize: 16, height: 1.4),
-            bodyMedium: const TextStyle(fontSize: 15, height: 1.4),
+            bodyLarge: const TextStyle(
+              fontSize: 16,
+              height: 1.4,
+              color: AppColors.textPrimary,
+            ),
+            bodyMedium: const TextStyle(
+              fontSize: 15,
+              height: 1.4,
+              color: AppColors.textPrimary,
+            ),
             titleLarge: const TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.w800,
+              color: AppColors.textPrimary,
             ),
             titleMedium: const TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
             ),
             labelLarge: const TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w600,
+              color: AppColors.textPrimary,
             ),
           ),
     );

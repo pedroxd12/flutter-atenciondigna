@@ -14,3 +14,17 @@ final waitStatusStreamProvider = StreamProvider<WaitStatus>((ref) async* {
   if (patientId == null) return;
   yield* ref.watch(waitingRemoteProvider).watchStatus(patientId);
 });
+
+/// Estado actual (one-shot) — util para pantallas que no necesitan stream.
+final waitStatusProvider = FutureProvider<WaitStatus?>((ref) async {
+  final patientId = ref.watch(currentPatientIdProvider);
+  if (patientId == null) return null;
+  return ref.watch(waitingRemoteProvider).getCurrent(patientId);
+});
+
+/// Cola en vivo del estudio actual del paciente. Vacia si no hay cita.
+final waitQueueProvider = FutureProvider<List<QueueItem>>((ref) async {
+  final patientId = ref.watch(currentPatientIdProvider);
+  if (patientId == null) return const [];
+  return ref.watch(waitingRemoteProvider).getQueue(patientId);
+});

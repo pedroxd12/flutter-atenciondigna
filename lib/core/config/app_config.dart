@@ -34,7 +34,7 @@ class AppConfig {
       case 'prod':
       default:
         // URL publica del backend en Railway.
-        return 'https://atencion-digna-api-production.up.railway.app';
+        return 'https://backend-atenciondigna-production.up.railway.app';
     }
   }
 }

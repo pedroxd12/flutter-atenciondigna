@@ -43,12 +43,52 @@ class WaitingRemoteDataSource {
     }
   }
 
-  WaitStatus _fromJson(Map<String, dynamic> j) => WaitStatus(
-    currentStudy: j['currentStudy'] as String,
-    area: j['area'] as String,
-    peopleAhead: (j['peopleAhead'] as num).toInt(),
-    estimatedMinutes: (j['estimatedMinutes'] as num).toDouble(),
-    saturationLevel: j['saturationLevel'] as String,
-    isYourTurn: j['isYourTurn'] as bool,
-  );
+  Future<WaitStatus> getCurrent(String patientId) async {
+    final res = await _api.dio.get<Map<String, dynamic>>(
+      '/pacientes/$patientId/espera',
+    );
+    return _fromJson(res.data!);
+  }
+
+  Future<List<QueueItem>> getQueue(String patientId) async {
+    final res = await _api.dio.get<List<dynamic>>(
+      '/pacientes/$patientId/espera/cola',
+    );
+    return (res.data ?? const [])
+        .cast<Map<String, dynamic>>()
+        .map(
+          (j) => QueueItem(
+            initials: j['initials'] as String,
+            folio: j['folio'] as String,
+            estudio: j['estudio'] as String,
+            posicion: (j['posicion'] as num).toInt(),
+            isCurrent: j['isCurrent'] as bool,
+            isMine: j['isMine'] as bool,
+          ),
+        )
+        .toList();
+  }
+
+  WaitStatus _fromJson(Map<String, dynamic> j) {
+    final branchJson = j['branch'] as Map<String, dynamic>?;
+    return WaitStatus(
+      currentStudy: j['currentStudy'] as String? ?? '',
+      area: j['area'] as String? ?? '',
+      peopleAhead: (j['peopleAhead'] as num?)?.toInt() ?? 0,
+      estimatedMinutes: (j['estimatedMinutes'] as num?)?.toDouble() ?? 0,
+      saturationLevel: j['saturationLevel'] as String? ?? 'bajo',
+      isYourTurn: j['isYourTurn'] as bool? ?? false,
+      folio: j['folio'] as String?,
+      hasActiveService: j['hasActiveService'] as bool? ?? false,
+      branch: branchJson == null
+          ? null
+          : WaitBranch(
+              id: (branchJson['id'] as num).toInt(),
+              name: branchJson['name'] as String,
+              address: branchJson['address'] as String? ?? '',
+              lat: (branchJson['lat'] as num).toDouble(),
+              lng: (branchJson['lng'] as num).toDouble(),
+            ),
+    );
+  }
 }

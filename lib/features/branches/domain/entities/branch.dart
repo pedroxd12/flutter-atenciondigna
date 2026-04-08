@@ -10,6 +10,7 @@ class Branch extends Equatable {
     required this.saturationLevel,
     required this.lat,
     required this.lng,
+    this.mapaGeojson,
   });
 
   final int id;
@@ -20,6 +21,9 @@ class Branch extends Equatable {
   final String saturationLevel; // bajo | medio | alto | critico
   final double lat;
   final double lng;
+
+  /// Mapa interno de la clinica (GeoJSON). Null si no fue capturado en BD.
+  final Map<String, dynamic>? mapaGeojson;
 
   @override
   List<Object?> get props => [id, name, distanceKm, waitTimeMinutes];
