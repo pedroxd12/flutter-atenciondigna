@@ -14,6 +14,7 @@ import '../../features/home/presentation/pages/home_dashboard_page.dart';
 import '../../features/home/presentation/pages/home_shell.dart';
 import '../../features/profile/presentation/pages/profile_page.dart';
 import '../../features/results/presentation/pages/results_list_page.dart';
+import '../../features/services/presentation/pages/service_cart_page.dart';
 import '../../features/services/presentation/pages/services_categories_page.dart';
 import '../../features/services/presentation/pages/services_list_page.dart';
 import '../../features/studies/presentation/pages/preparations_page.dart';
@@ -151,6 +152,11 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         path: '/services',
         parentNavigatorKey: _rootKey,
         builder: (_, __) => const ServicesCategoriesPage(),
+      ),
+      GoRoute(
+        path: '/services/cart',
+        parentNavigatorKey: _rootKey,
+        builder: (_, __) => const ServiceCartPage(),
       ),
       GoRoute(
         path: '/services/:idEstudio',

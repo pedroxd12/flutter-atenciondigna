@@ -9,6 +9,88 @@ final appointmentsRemoteProvider = Provider<AppointmentsRemoteDataSource>(
   (ref) => AppointmentsRemoteDataSource(ref.watch(apiClientProvider)),
 );
 
+/// Parametros para consultar slots disponibles del dia.
+class SlotsQuery {
+  const SlotsQuery({
+    required this.branchId,
+    required this.date,
+    required this.studyIds,
+  });
+  final int branchId;
+  final String date;
+  final List<int> studyIds;
+
+  @override
+  bool operator ==(Object other) =>
+      other is SlotsQuery &&
+      other.branchId == branchId &&
+      other.date == date &&
+      _listEq(other.studyIds, studyIds);
+
+  static bool _listEq(List<int> a, List<int> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
+  @override
+  int get hashCode => Object.hash(branchId, date, Object.hashAll(studyIds));
+}
+
+class AvailableSlot {
+  const AvailableSlot({
+    required this.date,
+    required this.hour,
+    required this.time,
+    required this.totalEstimatedMin,
+    required this.saturationLevel,
+    required this.score,
+    required this.reason,
+    required this.orderedStudyIds,
+  });
+  final String date;
+  final int hour;
+  final String time;
+  final double totalEstimatedMin;
+  final String saturationLevel; // bajo|medio|alto|critico
+  final double score;
+  final String reason;
+  final List<int> orderedStudyIds;
+
+  factory AvailableSlot.fromJson(Map<String, dynamic> j) => AvailableSlot(
+        date: (j['date'] as String?) ?? '',
+        hour: (j['hour'] as num?)?.toInt() ?? 0,
+        time: (j['time'] as String?) ?? '00:00',
+        totalEstimatedMin:
+            (j['totalEstimatedMin'] as num?)?.toDouble() ?? 0,
+        saturationLevel: (j['saturationLevel'] as String?) ?? 'medio',
+        score: (j['score'] as num?)?.toDouble() ?? 1.0,
+        reason: (j['reason'] as String?) ?? '',
+        orderedStudyIds: ((j['orderedStudyIds'] as List<dynamic>?) ?? const [])
+            .map((e) => (e as num).toInt())
+            .toList(),
+      );
+}
+
+/// Slots disponibles para un (sucursal, fecha, estudios). Devuelve lista
+/// vacia si la red falla — la UI muestra el estado correspondiente.
+final availableSlotsProvider =
+    FutureProvider.family<List<AvailableSlot>, SlotsQuery>((ref, q) async {
+  final raw = await ref.watch(appointmentsRemoteProvider).availableSlots(
+        branchId: q.branchId,
+        date: q.date,
+        studyIds: q.studyIds,
+        topN: 8,
+      );
+  final list = (raw['slots'] as List<dynamic>?) ?? const [];
+  return list
+      .cast<Map<String, dynamic>>()
+      .map(AvailableSlot.fromJson)
+      .toList();
+});
+
 class CreateAppointmentParams {
   CreateAppointmentParams({
     required this.branchId,
@@ -21,6 +103,45 @@ class CreateAppointmentParams {
   final String? time;
   final List<int> studyIds;
 }
+
+class SmartCreateParams {
+  SmartCreateParams({
+    required this.branchId,
+    required this.date,
+    required this.studyIds,
+    this.prioridad = 'cita',
+    this.horaApertura = 7,
+    this.horaCierre = 20,
+    this.confirm = true,
+  });
+  final int branchId;
+  final String date;
+  final List<int> studyIds;
+  final String prioridad;
+  final int horaApertura;
+  final int horaCierre;
+  final bool confirm;
+}
+
+final smartCreateProvider =
+    Provider<Future<Map<String, dynamic>> Function(SmartCreateParams)>(
+  (ref) => (params) async {
+    final patientId = ref.read(currentPatientIdProvider);
+    if (patientId == null) {
+      throw Exception('Necesitas iniciar sesion para agendar');
+    }
+    return ref.read(appointmentsRemoteProvider).smartCreate(
+          patientId: patientId,
+          branchId: params.branchId,
+          date: params.date,
+          studyIds: params.studyIds,
+          prioridad: params.prioridad,
+          horaApertura: params.horaApertura,
+          horaCierre: params.horaCierre,
+          confirm: params.confirm,
+        );
+  },
+);
 
 final createAppointmentProvider =
     Provider<Future<Appointment> Function(CreateAppointmentParams)>(

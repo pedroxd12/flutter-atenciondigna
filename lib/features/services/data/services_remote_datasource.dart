@@ -2,10 +2,53 @@ import 'package:dio/dio.dart';
 
 import '../../../core/network/api_client.dart';
 import '../domain/service_item.dart';
+import 'salud_digna_catalog.dart';
 
 class ServicesRemoteDataSource {
   ServicesRemoteDataSource(this._api);
   final ApiClient _api;
+
+  /// Catalogo completo desde el backend (12 categorias + variantes +
+  /// tiempos REALES en vivo del modelo IA).
+  ///
+  /// Mapea la respuesta del endpoint NestJS a las clases ya existentes
+  /// `CatalogCategory` / `CatalogItem` para no tocar la UI.
+  Future<List<CatalogCategory>> getCatalogoCompleto() async {
+    final res =
+        await _api.dio.get<List<dynamic>>('/servicios/catalogo-completo');
+    return (res.data ?? const [])
+        .cast<Map<String, dynamic>>()
+        .map(_categoryFromJson)
+        .toList();
+  }
+
+  CatalogCategory _categoryFromJson(Map<String, dynamic> j) {
+    final items = ((j['items'] as List<dynamic>?) ?? const [])
+        .cast<Map<String, dynamic>>()
+        .map(
+          (it) => CatalogItem(
+            id: it['id'].toString(),
+            idEstudio: (it['idEstudio'] as num).toInt(),
+            nombre: (it['nombre'] as String?) ?? '',
+            precio: it['precio'] == null ? null : (it['precio'] as num).toDouble(),
+          ),
+        )
+        .toList();
+    return CatalogCategory(
+      idEstudio: (j['idEstudio'] as num).toInt(),
+      nombre: (j['nombre'] as String?) ?? '',
+      tiempoServicioMin: (j['tiempoServicioMin'] as num?)?.toInt() ?? 15,
+      tiempoEsperaPromedioMin:
+          (j['tiempoEsperaPromedioMin'] as num?)?.toInt() ?? 20,
+      icono: (j['icono'] as String?) ?? 'medical_services',
+      descripcion: (j['descripcion'] as String?) ?? '',
+      preparacion: (j['preparacion'] as String?) ?? '',
+      tiempoEsperaActualMin:
+          (j['tiempoEsperaActualMin'] as num?)?.toDouble(),
+      saturacionActual: j['saturacionActual'] as String?,
+      items: items,
+    );
+  }
 
   Future<List<ServiceCategory>> getCategorias() async {
     try {

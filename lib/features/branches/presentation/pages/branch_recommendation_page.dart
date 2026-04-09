@@ -5,8 +5,22 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/google_static_map.dart';
 import '../../../location/providers/location_providers.dart';
+import '../../../services/presentation/providers/catalog_providers.dart';
 import '../../domain/entities/branch.dart';
 import '../providers/branches_providers.dart';
+
+/// Sucursal MVP por defecto cuando el backend no responde o el usuario
+/// no concedio permisos de ubicacion. Coordenadas reales de Coyoacan.
+const Branch _kCoyoacanFallback = Branch(
+  id: CoyoacanBranch.id,
+  name: 'Salud Digna Coyoacan',
+  address: CoyoacanBranch.direccion,
+  distanceKm: 0,
+  waitTimeMinutes: 20,
+  saturationLevel: 'medio',
+  lat: CoyoacanBranch.lat,
+  lng: CoyoacanBranch.lon,
+);
 
 /// Pantalla "Mapas / Sucursales" — muestra las sucursales mas cercanas
 /// usando el catalogo de la BD y el mapa real de Google (proxy backend).
@@ -61,58 +75,111 @@ class _BranchRecommendationPageState
       ),
       body: branchesAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) {
-          if (e is LocationUnavailableException) {
-            return _LocationNeededState(
-              onEnable: () => ref.read(refreshLocationProvider.future),
-            );
-          }
-          return _ErrorState(
-            message: 'No pudimos obtener las sucursales',
-            onRetry: () => ref.invalidate(nearestBranchesProvider),
-          );
-        },
+        // Si el backend falla o las sucursales vienen vacias, NO bloqueamos
+        // el mapa: caemos a la sucursal MVP (Coyoacan) y mostramos un banner
+        // ligero invitando a activar la ubicacion para mejorar la precision.
+        error: (e, _) => _buildBody(
+          context,
+          branches: const [_kCoyoacanFallback],
+          showLocationBanner: position == null,
+          isFallback: true,
+        ),
         data: (branches) {
-          if (branches.isEmpty) {
-            return const _EmptyBranchesState();
-          }
-          final selected = _selected ?? branches.first;
-          return RefreshIndicator(
-            onRefresh: () async => ref.invalidate(nearestBranchesProvider),
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
-              children: [
-                _MapCard(
-                  center: selected,
-                  user: position,
-                  others: branches.where((b) => b.id != selected.id).toList(),
-                ),
-                const SizedBox(height: 18),
-                const _SectionLabel('CERCA DE TI'),
-                const SizedBox(height: 10),
-                ...branches.map(
-                  (b) => Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: _BranchCard(
-                      branch: b,
-                      selected: b.id == selected.id,
-                      onTap: () {
-                        setState(() => _selected = b);
-                      },
-                      onChoose: () {
-                        if (widget.selecting) {
-                          context.pop(b);
-                        } else {
-                          context.push('/checkin');
-                        }
-                      },
-                    ),
-                  ),
-                ),
-              ],
-            ),
+          final list = branches.isEmpty ? const [_kCoyoacanFallback] : branches;
+          return _buildBody(
+            context,
+            branches: list,
+            showLocationBanner: position == null,
+            isFallback: branches.isEmpty,
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildBody(
+    BuildContext context, {
+    required List<Branch> branches,
+    required bool showLocationBanner,
+    required bool isFallback,
+  }) {
+    final position = ref.watch(currentPositionProvider);
+    final selected = _selected ?? branches.first;
+    return RefreshIndicator(
+      onRefresh: () async {
+        await ref.read(refreshLocationProvider.future);
+        ref.invalidate(nearestBranchesProvider);
+      },
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+        children: [
+          if (showLocationBanner)
+            _LocationBanner(
+              onEnable: () async {
+                await ref.read(refreshLocationProvider.future);
+                ref.invalidate(nearestBranchesProvider);
+              },
+            ),
+          if (showLocationBanner) const SizedBox(height: 14),
+          _MapCard(
+            center: selected,
+            user: position,
+            others: branches.where((b) => b.id != selected.id).toList(),
+          ),
+          const SizedBox(height: 18),
+          _SectionLabel(isFallback ? 'SUCURSAL MVP' : 'CERCA DE TI'),
+          const SizedBox(height: 10),
+          ...branches.map(
+            (b) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: _BranchCard(
+                branch: b,
+                selected: b.id == selected.id,
+                onTap: () => setState(() => _selected = b),
+                onChoose: () {
+                  if (widget.selecting) {
+                    context.pop(b);
+                  } else {
+                    context.push('/checkin');
+                  }
+                },
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LocationBanner extends StatelessWidget {
+  const _LocationBanner({required this.onEnable});
+  final VoidCallback onEnable;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.primarySoft,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.my_location, color: AppColors.primary),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Text(
+              'Activa tu ubicacion para ver las sucursales mas cercanas a ti.',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+            ),
+          ),
+          TextButton(
+            onPressed: onEnable,
+            child: const Text('Activar'),
+          ),
+        ],
       ),
     );
   }
@@ -351,97 +418,3 @@ class _SectionLabel extends StatelessWidget {
   }
 }
 
-class _LocationNeededState extends StatelessWidget {
-  const _LocationNeededState({required this.onEnable});
-  final VoidCallback onEnable;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(
-              Icons.location_off,
-              size: 56,
-              color: AppColors.textSecondary,
-            ),
-            const SizedBox(height: 14),
-            const Text(
-              'Necesitamos tu ubicacion',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 6),
-            const Text(
-              'Activa los permisos de ubicacion para mostrarte las sucursales mas cercanas a ti.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: AppColors.textSecondary),
-            ),
-            const SizedBox(height: 18),
-            FilledButton.icon(
-              onPressed: onEnable,
-              icon: const Icon(Icons.my_location),
-              label: const Text('Activar ubicacion'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _EmptyBranchesState extends StatelessWidget {
-  const _EmptyBranchesState();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Center(
-      child: Padding(
-        padding: EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.local_hospital_outlined,
-                size: 56, color: AppColors.textSecondary),
-            SizedBox(height: 14),
-            Text(
-              'No hay sucursales disponibles',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-            ),
-            SizedBox(height: 6),
-            Text(
-              'No encontramos sucursales registradas en la base de datos para mostrarte.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: AppColors.textSecondary),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ErrorState extends StatelessWidget {
-  const _ErrorState({required this.message, required this.onRetry});
-  final String message;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.cloud_off,
-              size: 56, color: AppColors.textSecondary),
-          const SizedBox(height: 12),
-          Text(message),
-          const SizedBox(height: 12),
-          FilledButton(onPressed: onRetry, child: const Text('Reintentar')),
-        ],
-      ),
-    );
-  }
-}

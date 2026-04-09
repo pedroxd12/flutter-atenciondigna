@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/theme/app_colors.dart';
-import '../../domain/service_item.dart';
-import '../providers/services_providers.dart';
+import '../../data/salud_digna_catalog.dart';
+import '../providers/catalog_providers.dart';
+import 'services_categories_page.dart' show iconForCategory, capitalizeWords;
 
-/// Lista de servicios para una categoria. Muestra paquetes, precio,
-/// y un badge cuando el servicio requiere preparacion previa.
+/// Lista de variantes de una categoria del catalogo local.
+/// Permite buscar, ver detalle/preparacion y agregar al carrito.
 class ServicesListPage extends ConsumerStatefulWidget {
   const ServicesListPage({super.key, required this.idEstudio});
 
@@ -19,135 +21,143 @@ class ServicesListPage extends ConsumerStatefulWidget {
 
 class _ServicesListPageState extends ConsumerState<ServicesListPage> {
   String _query = '';
-  bool _onlyPaquetes = false;
 
   @override
   Widget build(BuildContext context) {
-    final async = ref.watch(serviciosPorCategoriaProvider(widget.idEstudio));
+    // Asegura que el catalogo del backend este cargado antes de buscar
+    // la categoria por id (si entras directo desde un deeplink).
+    final remoteAsync = ref.watch(remoteCatalogProvider);
+    final category = ref.watch(categoryByIdProvider(widget.idEstudio));
+    final cart = ref.watch(serviceCartProvider);
+
+    if (category == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Servicios')),
+        body: Center(
+          child: remoteAsync.isLoading
+              ? const CircularProgressIndicator()
+              : const Text('Categoria no encontrada'),
+        ),
+      );
+    }
+
+    final items = category.items.where((s) {
+      if (_query.isEmpty) return true;
+      return s.nombre.toLowerCase().contains(_query.toLowerCase());
+    }).toList();
 
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Servicios'),
+        title: Text(capitalizeWords(category.nombre)),
         backgroundColor: AppColors.surface,
         elevation: 0,
         foregroundColor: AppColors.textPrimary,
       ),
-      body: async.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text(e.toString())),
-        data: (items) {
-          final categoria = items.isNotEmpty ? items.first.categoria : '';
-          final filtered = items.where((s) {
-            if (_onlyPaquetes && !s.esPaquete) return false;
-            if (_query.isEmpty) return true;
-            return s.nombre.toLowerCase().contains(_query.toLowerCase());
-          }).toList();
-
-          final paquetesCount = items.where((s) => s.esPaquete).length;
-
-          return Column(
-            children: [
-              _CategoryHeader(
-                nombre: _capitalize(categoria),
-                total: items.length,
-                paquetes: paquetesCount,
+      body: Column(
+        children: [
+          _CategoryHeader(category: category),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 14, 20, 6),
+            child: TextField(
+              onChanged: (v) => setState(() => _query = v),
+              decoration: InputDecoration(
+                hintText: 'Buscar servicio...',
+                prefixIcon: const Icon(Icons.search),
+                filled: true,
+                fillColor: AppColors.surface,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 0,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: const BorderSide(color: AppColors.border),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: const BorderSide(color: AppColors.border),
+                ),
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 14, 20, 6),
-                child: TextField(
-                  onChanged: (v) => setState(() => _query = v),
-                  decoration: InputDecoration(
-                    hintText: 'Buscar servicio...',
-                    prefixIcon: const Icon(Icons.search),
-                    filled: true,
-                    fillColor: AppColors.surface,
-                    contentPadding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide: const BorderSide(color: AppColors.border),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 6),
+            child: Row(
+              children: [
+                Text(
+                  '${items.length} servicios',
+                  style: const TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const Spacer(),
+                if (cart.totalItems > 0)
+                  Text(
+                    'Carrito: ${cart.totalItems}',
+                    style: const TextStyle(
+                      color: AppColors.primary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
                     ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide: const BorderSide(color: AppColors.border),
+                  ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: items.isEmpty
+                ? const _EmptyState()
+                : ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(20, 6, 20, 110),
+                    itemCount: items.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 10),
+                    itemBuilder: (_, i) => _ServiceCard(
+                      item: items[i],
+                      category: category,
+                      isInCart: cart.contains(items[i].id),
+                      onTap: () => _showDetail(items[i], category),
+                      onAdd: () => ref
+                          .read(serviceCartProvider.notifier)
+                          .toggle(items[i]),
                     ),
+                  ),
+          ),
+        ],
+      ),
+      bottomNavigationBar: cart.totalItems == 0
+          ? null
+          : SafeArea(
+              child: Container(
+                margin: const EdgeInsets.all(20),
+                child: FilledButton.icon(
+                  onPressed: () => context.push('/services/cart'),
+                  icon: const Icon(Icons.shopping_cart_checkout),
+                  label: Text(
+                    'Continuar (${cart.totalItems}) · '
+                    '\$${cart.total.toStringAsFixed(0)} MXN',
                   ),
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 4, 20, 6),
-                child: Row(
-                  children: [
-                    FilterChip(
-                      label: const Text('Solo paquetes'),
-                      selected: _onlyPaquetes,
-                      onSelected: (v) => setState(() => _onlyPaquetes = v),
-                      selectedColor: AppColors.primarySoft,
-                      checkmarkColor: AppColors.primary,
-                      labelStyle: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        color: _onlyPaquetes
-                            ? AppColors.primary
-                            : AppColors.textPrimary,
-                      ),
-                      side: const BorderSide(color: AppColors.border),
-                    ),
-                    const Spacer(),
-                    Text(
-                      '${filtered.length} resultados',
-                      style: const TextStyle(
-                        color: AppColors.textSecondary,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: filtered.isEmpty
-                    ? const _EmptyState()
-                    : ListView.separated(
-                        padding: const EdgeInsets.fromLTRB(20, 6, 20, 24),
-                        itemCount: filtered.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 10),
-                        itemBuilder: (_, i) => _ServiceCard(
-                          item: filtered[i],
-                          onTap: () => _showDetail(filtered[i]),
-                        ),
-                      ),
-              ),
-            ],
-          );
-        },
-      ),
+            ),
     );
   }
 
-  void _showDetail(ServiceItem s) {
+  void _showDetail(CatalogItem s, CatalogCategory cat) {
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (_) => _ServiceDetailSheet(item: s),
+      builder: (_) => _ServiceDetailSheet(item: s, category: cat),
     );
   }
-
-  String _capitalize(String s) =>
-      s.isEmpty ? s : s[0].toUpperCase() + s.substring(1).toLowerCase();
 }
 
 class _CategoryHeader extends StatelessWidget {
-  const _CategoryHeader({
-    required this.nombre,
-    required this.total,
-    required this.paquetes,
-  });
+  const _CategoryHeader({required this.category});
 
-  final String nombre;
-  final int total;
-  final int paquetes;
+  final CatalogCategory category;
 
   @override
   Widget build(BuildContext context) {
@@ -166,20 +176,50 @@ class _CategoryHeader extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            nombre,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 22,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 8),
           Row(
             children: [
-              _Pill(label: '$total servicios', icon: Icons.list_alt),
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  iconForCategory(category.icono),
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  capitalizeWords(category.nombre),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            category.descripcion,
+            style: const TextStyle(color: Colors.white70, fontSize: 13),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              _Pill(
+                label: '${category.items.length} servicios',
+                icon: Icons.list_alt,
+              ),
               const SizedBox(width: 8),
-              _Pill(label: '$paquetes paquetes', icon: Icons.inventory_2),
+              _Pill(
+                label: '~${category.tiempoEsperaVigenteMin} min espera',
+                icon: Icons.schedule,
+              ),
             ],
           ),
         ],
@@ -221,10 +261,19 @@ class _Pill extends StatelessWidget {
 }
 
 class _ServiceCard extends StatelessWidget {
-  const _ServiceCard({required this.item, required this.onTap});
+  const _ServiceCard({
+    required this.item,
+    required this.category,
+    required this.isInCart,
+    required this.onTap,
+    required this.onAdd,
+  });
 
-  final ServiceItem item;
+  final CatalogItem item;
+  final CatalogCategory category;
+  final bool isInCart;
   final VoidCallback onTap;
+  final VoidCallback onAdd;
 
   @override
   Widget build(BuildContext context) {
@@ -233,6 +282,7 @@ class _ServiceCard extends StatelessWidget {
       symbol: '\$',
       decimalDigits: 0,
     );
+    final isPaquete = item.nombre.toLowerCase().contains('paquete');
 
     return Material(
       color: AppColors.surface,
@@ -245,8 +295,10 @@ class _ServiceCard extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: item.esPaquete ? AppColors.primary : AppColors.border,
-              width: item.esPaquete ? 1.6 : 1,
+              color: isInCart
+                  ? AppColors.primary
+                  : (isPaquete ? AppColors.primary : AppColors.border),
+              width: isInCart || isPaquete ? 1.6 : 1,
             ),
           ),
           child: Column(
@@ -257,7 +309,9 @@ class _ServiceCard extends StatelessWidget {
                 children: [
                   Expanded(
                     child: Text(
-                      item.nombre,
+                      capitalizeWords(item.nombre),
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w800,
@@ -279,32 +333,52 @@ class _ServiceCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 10),
+              // Badges en su propia fila con Wrap — soporta nombres largos
+              // sin generar overflow horizontal.
               Wrap(
                 spacing: 6,
                 runSpacing: 6,
                 children: [
-                  if (item.esPaquete)
+                  if (isPaquete)
                     const _Badge(
                       label: 'Paquete',
                       icon: Icons.inventory_2,
                       color: AppColors.primary,
                       bg: AppColors.primarySoft,
                     ),
-                  if (item.requierePreparacion)
-                    const _Badge(
-                      label: 'Requiere preparacion',
-                      icon: Icons.warning_amber_rounded,
-                      color: Color(0xFFB45309),
-                      bg: Color(0xFFFEF3C7),
-                    )
-                  else
-                    const _Badge(
-                      label: 'Sin preparacion',
-                      icon: Icons.check_circle,
-                      color: AppColors.success,
-                      bg: Color(0xFFD1FAE5),
-                    ),
+                  _Badge(
+                    label: '~${category.tiempoEsperaVigenteMin} min',
+                    icon: Icons.schedule,
+                    color: const Color(0xFF4338CA),
+                    bg: const Color(0xFFEEF2FF),
+                  ),
                 ],
+              ),
+              const SizedBox(height: 10),
+              // Boton de agregar al carrito ocupa el ancho completo.
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: onAdd,
+                  icon: Icon(
+                    isInCart ? Icons.check : Icons.add_shopping_cart,
+                    size: 18,
+                  ),
+                  label: Text(isInCart ? 'En carrito' : 'Agregar'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor:
+                        isInCart ? AppColors.success : AppColors.primary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                    textStyle: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
               ),
             ],
           ),
@@ -354,22 +428,26 @@ class _Badge extends StatelessWidget {
   }
 }
 
-class _ServiceDetailSheet extends StatelessWidget {
-  const _ServiceDetailSheet({required this.item});
-  final ServiceItem item;
+class _ServiceDetailSheet extends ConsumerWidget {
+  const _ServiceDetailSheet({required this.item, required this.category});
+  final CatalogItem item;
+  final CatalogCategory category;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final money = NumberFormat.currency(
       locale: 'es_MX',
       symbol: '\$',
       decimalDigits: 0,
     );
+    final cart = ref.watch(serviceCartProvider);
+    final isInCart = cart.contains(item.id);
+    final isPaquete = item.nombre.toLowerCase().contains('paquete');
 
     return DraggableScrollableSheet(
-      initialChildSize: 0.55,
+      initialChildSize: 0.65,
       minChildSize: 0.4,
-      maxChildSize: 0.85,
+      maxChildSize: 0.92,
       expand: false,
       builder: (_, controller) => Container(
         decoration: const BoxDecoration(
@@ -391,7 +469,7 @@ class _ServiceDetailSheet extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 18),
-            if (item.esPaquete)
+            if (isPaquete)
               const _Badge(
                 label: 'Paquete',
                 icon: Icons.inventory_2,
@@ -400,7 +478,7 @@ class _ServiceDetailSheet extends StatelessWidget {
               ),
             const SizedBox(height: 10),
             Text(
-              item.nombre,
+              capitalizeWords(item.nombre),
               style: const TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.w800,
@@ -409,7 +487,7 @@ class _ServiceDetailSheet extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             Text(
-              item.categoria,
+              capitalizeWords(category.nombre),
               style: const TextStyle(
                 color: AppColors.textSecondary,
                 fontSize: 14,
@@ -426,10 +504,7 @@ class _ServiceDetailSheet extends StatelessWidget {
                 ),
                 child: Row(
                   children: [
-                    const Icon(
-                      Icons.local_offer,
-                      color: AppColors.primary,
-                    ),
+                    const Icon(Icons.local_offer, color: AppColors.primary),
                     const SizedBox(width: 12),
                     const Text(
                       'Precio',
@@ -450,25 +525,45 @@ class _ServiceDetailSheet extends StatelessWidget {
                   ],
                 ),
               ),
+            const SizedBox(height: 14),
+            _InfoRow(
+              icon: Icons.schedule,
+              title: 'Tiempo aproximado',
+              detail:
+                  '~${category.tiempoEsperaVigenteMin} min de espera + '
+                  '${category.tiempoServicioMin} min de atencion',
+            ),
+            const SizedBox(height: 10),
+            _InfoRow(
+              icon: Icons.location_on,
+              title: 'Sucursal',
+              detail: 'Coyoacan · Av. Universidad 1330',
+            ),
             const SizedBox(height: 16),
-            _PreparationBlock(item: item),
+            _PreparationBlock(category: category),
             const SizedBox(height: 22),
             FilledButton.icon(
               onPressed: () {
+                ref.read(serviceCartProvider.notifier).toggle(item);
                 Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text(
-                      'Listo. Continua la cita en "Solicitar estudio"',
+                      isInCart
+                          ? 'Quitado de tu carrito'
+                          : 'Agregado a tu carrito',
                     ),
                     backgroundColor: AppColors.primary,
                   ),
                 );
               },
-              icon: const Icon(Icons.check_circle),
-              label: const Text('Elegir este servicio'),
+              icon: Icon(
+                isInCart ? Icons.remove_shopping_cart : Icons.add_shopping_cart,
+              ),
+              label: Text(isInCart ? 'Quitar del carrito' : 'Agregar al carrito'),
               style: FilledButton.styleFrom(
                 minimumSize: const Size.fromHeight(52),
+                backgroundColor: isInCart ? AppColors.danger : AppColors.primary,
               ),
             ),
           ],
@@ -478,19 +573,66 @@ class _ServiceDetailSheet extends StatelessWidget {
   }
 }
 
-class _PreparationBlock extends StatelessWidget {
-  const _PreparationBlock({required this.item});
-  final ServiceItem item;
+class _InfoRow extends StatelessWidget {
+  const _InfoRow({
+    required this.icon,
+    required this.title,
+    required this.detail,
+  });
+  final IconData icon;
+  final String title;
+  final String detail;
 
   @override
   Widget build(BuildContext context) {
-    final requires = item.requierePreparacion;
-    final color = requires ? const Color(0xFFB45309) : AppColors.success;
-    final bg = requires ? const Color(0xFFFEF3C7) : const Color(0xFFD1FAE5);
-    final icon = requires ? Icons.warning_amber_rounded : Icons.check_circle;
-    final title = requires
-        ? 'Requiere preparacion previa'
-        : 'No requiere preparacion previa';
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: AppColors.primary),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: AppColors.textSecondary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  detail,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PreparationBlock extends StatelessWidget {
+  const _PreparationBlock({required this.category});
+  final CatalogCategory category;
+
+  @override
+  Widget build(BuildContext context) {
+    const color = Color(0xFFB45309);
+    const bg = Color(0xFFFEF3C7);
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -502,32 +644,29 @@ class _PreparationBlock extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: color),
+          const Icon(Icons.tips_and_updates, color: color),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  title,
+                const Text(
+                  'Como prepararte',
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w800,
                     color: color,
                   ),
                 ),
-                if (item.preparacion != null &&
-                    item.preparacion!.isNotEmpty) ...[
-                  const SizedBox(height: 6),
-                  Text(
-                    item.preparacion!,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      height: 1.4,
-                      color: AppColors.textPrimary,
-                    ),
+                const SizedBox(height: 6),
+                Text(
+                  category.preparacion,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    height: 1.4,
+                    color: AppColors.textPrimary,
                   ),
-                ],
+                ),
               ],
             ),
           ),

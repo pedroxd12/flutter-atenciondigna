@@ -4,6 +4,11 @@
          tiene que declararse explicitamente o la app no puede abrir sockets. -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <!-- Ubicacion para recomendar la sucursal mas cercana y dibujar el mapa.
+         Sin estos permisos en el manifest, geolocator NUNCA pide consentimiento
+         y devuelve "denied" inmediatamente, bloqueando el mapa. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
     <application
         android:label="@string/app_name"
         android:name="${applicationName}"

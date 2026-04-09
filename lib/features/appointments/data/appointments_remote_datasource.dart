@@ -25,6 +25,26 @@ class AppointmentsRemoteDataSource {
     return _fromJson(res.data!);
   }
 
+  /// Lista de horarios disponibles del dia para un paquete de estudios.
+  /// Espejo de GET /reservaciones/slots.
+  Future<Map<String, dynamic>> availableSlots({
+    required int branchId,
+    required String date,
+    required List<int> studyIds,
+    int topN = 8,
+  }) async {
+    final res = await _api.dio.get<Map<String, dynamic>>(
+      '/reservaciones/slots',
+      queryParameters: {
+        'branchId': branchId,
+        'date': date,
+        'studyIds': studyIds.join(','),
+        'topN': topN,
+      },
+    );
+    return res.data ?? const {};
+  }
+
   Future<List<Appointment>> listForPatient(String patientId) async {
     final res = await _api.dio.get<List<dynamic>>(
       '/reservaciones/paciente/$patientId',
@@ -33,6 +53,36 @@ class AppointmentsRemoteDataSource {
         .cast<Map<String, dynamic>>()
         .map(_fromJson)
         .toList();
+  }
+
+  /// Crea una reservacion usando el motor de IA — busca el mejor slot del dia
+  /// y devuelve ETA, orden recomendado y nivel de saturacion.
+  ///
+  /// Espejo de POST /reservaciones/smart en el backend Nest.
+  Future<Map<String, dynamic>> smartCreate({
+    required String patientId,
+    required int branchId,
+    required String date,
+    required List<int> studyIds,
+    String prioridad = 'cita',
+    int horaApertura = 7,
+    int horaCierre = 20,
+    bool confirm = true,
+  }) async {
+    final res = await _api.dio.post<Map<String, dynamic>>(
+      '/reservaciones/smart',
+      data: {
+        'patientId': patientId,
+        'branchId': branchId,
+        'date': date,
+        'studyIds': studyIds,
+        'prioridad': prioridad,
+        'horaApertura': horaApertura,
+        'horaCierre': horaCierre,
+        'confirm': confirm,
+      },
+    );
+    return res.data ?? const {};
   }
 
   Appointment _fromJson(Map<String, dynamic> j) {
