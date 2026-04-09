@@ -345,7 +345,7 @@ class _CategoryCard extends StatelessWidget {
                   ],
                   Flexible(
                     child: Text(
-                      '~${category.tiempoEsperaVigenteMin} min',
+                      '~${category.tiempoTotalVigenteMin} min',
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w800,

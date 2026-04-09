@@ -44,6 +44,8 @@ class AvailableSlot {
     required this.date,
     required this.hour,
     required this.time,
+    required this.waitMin,
+    required this.serviceMin,
     required this.totalEstimatedMin,
     required this.saturationLevel,
     required this.score,
@@ -53,25 +55,41 @@ class AvailableSlot {
   final String date;
   final int hour;
   final String time;
+
+  /// Tiempo de espera predicho por el modelo IA.
+  final int waitMin;
+
+  /// Tiempo de atencion (consultorio efectivo) sumado de los estudios.
+  final int serviceMin;
+
+  /// waitMin + serviceMin: el total que ve el paciente.
   final double totalEstimatedMin;
+
   final String saturationLevel; // bajo|medio|alto|critico
   final double score;
   final String reason;
   final List<int> orderedStudyIds;
 
-  factory AvailableSlot.fromJson(Map<String, dynamic> j) => AvailableSlot(
-        date: (j['date'] as String?) ?? '',
-        hour: (j['hour'] as num?)?.toInt() ?? 0,
-        time: (j['time'] as String?) ?? '00:00',
-        totalEstimatedMin:
-            (j['totalEstimatedMin'] as num?)?.toDouble() ?? 0,
-        saturationLevel: (j['saturationLevel'] as String?) ?? 'medio',
-        score: (j['score'] as num?)?.toDouble() ?? 1.0,
-        reason: (j['reason'] as String?) ?? '',
-        orderedStudyIds: ((j['orderedStudyIds'] as List<dynamic>?) ?? const [])
-            .map((e) => (e as num).toInt())
-            .toList(),
-      );
+  factory AvailableSlot.fromJson(Map<String, dynamic> j) {
+    final wait = (j['waitMin'] as num?)?.toInt() ?? 0;
+    final service = (j['serviceMin'] as num?)?.toInt() ?? 0;
+    final total = (j['totalEstimatedMin'] as num?)?.toDouble() ??
+        (wait + service).toDouble();
+    return AvailableSlot(
+      date: (j['date'] as String?) ?? '',
+      hour: (j['hour'] as num?)?.toInt() ?? 0,
+      time: (j['time'] as String?) ?? '00:00',
+      waitMin: wait,
+      serviceMin: service,
+      totalEstimatedMin: total,
+      saturationLevel: (j['saturationLevel'] as String?) ?? 'medio',
+      score: (j['score'] as num?)?.toDouble() ?? 1.0,
+      reason: (j['reason'] as String?) ?? '',
+      orderedStudyIds: ((j['orderedStudyIds'] as List<dynamic>?) ?? const [])
+          .map((e) => (e as num).toInt())
+          .toList(),
+    );
+  }
 }
 
 /// Slots disponibles para un (sucursal, fecha, estudios). Devuelve lista

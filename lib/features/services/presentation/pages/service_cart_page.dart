@@ -349,14 +349,22 @@ class _SlotTile extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '~${slot.totalEstimatedMin.toStringAsFixed(0)} min '
-                        'estimados',
+                        '~${slot.totalEstimatedMin.toStringAsFixed(0)} min en total',
                         style: const TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w800,
                         ),
                       ),
-                      const SizedBox(height: 3),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${slot.waitMin} min de espera + ${slot.serviceMin} min de atencion',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: AppColors.textSecondary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
                       Row(
                         children: [
                           Container(

@@ -13,27 +13,44 @@ class CatalogCategory {
     required this.items,
     required this.icono,
     this.tiempoEsperaActualMin,
+    this.tiempoTotalActualMin,
+    this.tiempoTotalPromedioMin,
     this.saturacionActual,
   });
   final int idEstudio;
   final String nombre;
+
+  /// Tiempo de atencion (consultorio efectivo).
   final int tiempoServicioMin;
+
+  /// Promedio historico de espera (sin atencion).
   final int tiempoEsperaPromedioMin;
+
   final String preparacion;
   final String descripcion;
   final List<CatalogItem> items;
   final String icono;
 
-  /// Tiempo de espera REAL en vivo, calculado por el modelo IA
-  /// (`/scheduler/clinic/46/snapshot`). Null si el modelo no respondio.
+  /// Espera viva del modelo IA. Null si el modelo no respondio.
   final double? tiempoEsperaActualMin;
+
+  /// Espera viva + atencion. Lo provee el backend cuando hay snapshot.
+  final int? tiempoTotalActualMin;
+
+  /// Espera promedio historica + atencion. Lo provee el backend.
+  final int? tiempoTotalPromedioMin;
 
   /// Nivel de saturacion en vivo del modelo IA: bajo|medio|alto|critico.
   final String? saturacionActual;
 
-  /// El tiempo de espera "vigente" para mostrar al usuario:
-  /// preferimos el tiempo en vivo del modelo IA y caemos al promedio
-  /// historico si no esta disponible.
+  /// Tiempo TOTAL (espera + atencion) que vamos a mostrar al usuario.
+  /// Preferimos el vivo del modelo IA, caemos al promedio historico.
+  int get tiempoTotalVigenteMin =>
+      tiempoTotalActualMin ??
+      tiempoTotalPromedioMin ??
+      (tiempoEsperaPromedioMin + tiempoServicioMin);
+
+  /// Solo el tiempo de espera vigente (para etiquetas que separan ambos).
   int get tiempoEsperaVigenteMin =>
       tiempoEsperaActualMin?.round() ?? tiempoEsperaPromedioMin;
 }

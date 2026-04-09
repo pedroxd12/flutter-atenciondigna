@@ -43,8 +43,10 @@ class ServicesRemoteDataSource {
       icono: (j['icono'] as String?) ?? 'medical_services',
       descripcion: (j['descripcion'] as String?) ?? '',
       preparacion: (j['preparacion'] as String?) ?? '',
-      tiempoEsperaActualMin:
-          (j['tiempoEsperaActualMin'] as num?)?.toDouble(),
+      tiempoEsperaActualMin: (j['tiempoEsperaActualMin'] as num?)?.toDouble(),
+      tiempoTotalActualMin: (j['tiempoTotalActualMin'] as num?)?.toInt(),
+      tiempoTotalPromedioMin:
+          (j['tiempoTotalPromedioMin'] as num?)?.toInt(),
       saturacionActual: j['saturacionActual'] as String?,
       items: items,
     );

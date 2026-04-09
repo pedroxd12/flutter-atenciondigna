@@ -217,7 +217,7 @@ class _CategoryHeader extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               _Pill(
-                label: '~${category.tiempoEsperaVigenteMin} min espera',
+                label: '~${category.tiempoTotalVigenteMin} min total',
                 icon: Icons.schedule,
               ),
             ],
@@ -347,7 +347,7 @@ class _ServiceCard extends StatelessWidget {
                       bg: AppColors.primarySoft,
                     ),
                   _Badge(
-                    label: '~${category.tiempoEsperaVigenteMin} min',
+                    label: '~${category.tiempoTotalVigenteMin} min',
                     icon: Icons.schedule,
                     color: const Color(0xFF4338CA),
                     bg: const Color(0xFFEEF2FF),
@@ -528,10 +528,11 @@ class _ServiceDetailSheet extends ConsumerWidget {
             const SizedBox(height: 14),
             _InfoRow(
               icon: Icons.schedule,
-              title: 'Tiempo aproximado',
+              title: 'Tiempo aproximado total',
               detail:
-                  '~${category.tiempoEsperaVigenteMin} min de espera + '
-                  '${category.tiempoServicioMin} min de atencion',
+                  '~${category.tiempoTotalVigenteMin} min '
+                  '(${category.tiempoEsperaVigenteMin} de espera + '
+                  '${category.tiempoServicioMin} de atencion)',
             ),
             const SizedBox(height: 10),
             _InfoRow(
