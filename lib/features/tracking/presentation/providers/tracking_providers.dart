@@ -11,7 +11,9 @@ final trackingRemoteProvider = Provider<TrackingRemoteDataSource>(
   (ref) => TrackingRemoteDataSource(ref.watch(apiClientProvider)),
 );
 
-/// Provider que hace polling cada 10 segundos al endpoint de tracking.
+/// Provider que hace polling al endpoint de tracking.
+/// - 10s cuando el paciente tiene visita activa.
+/// - 60s cuando NO tiene visita activa (solo para detectar check-in).
 /// Se auto-dispone cuando nadie lo observa (autoDispose).
 final trackingStatusProvider =
     AutoDisposeAsyncNotifierProvider<TrackingStatusNotifier, TrackingStatus?>(
@@ -24,7 +26,6 @@ class TrackingStatusNotifier
 
   @override
   Future<TrackingStatus?> build() async {
-    // Cancela el timer cuando el provider se dispone.
     ref.onDispose(() => _timer?.cancel());
 
     final patientId = ref.watch(currentPatientIdProvider);
@@ -33,13 +34,18 @@ class TrackingStatusNotifier
     // Primera carga.
     final result = await _fetch(patientId);
 
-    // Inicia polling cada 10 segundos.
-    _timer?.cancel();
-    _timer = Timer.periodic(const Duration(seconds: 10), (_) {
-      _poll(patientId);
-    });
+    // Ajusta intervalo segun si hay visita activa.
+    _startPolling(patientId, hasActiveVisit: result?.hasActiveVisit ?? false);
 
     return result;
+  }
+
+  void _startPolling(String patientId, {required bool hasActiveVisit}) {
+    _timer?.cancel();
+    final interval = hasActiveVisit
+        ? const Duration(seconds: 10)
+        : const Duration(seconds: 60);
+    _timer = Timer.periodic(interval, (_) => _poll(patientId));
   }
 
   Future<TrackingStatus?> _fetch(String patientId) async {
@@ -50,7 +56,13 @@ class TrackingStatusNotifier
   Future<void> _poll(String patientId) async {
     try {
       final result = await _fetch(patientId);
+      final wasActive = state.valueOrNull?.hasActiveVisit ?? false;
+      final isActive = result?.hasActiveVisit ?? false;
       state = AsyncValue.data(result);
+      // Si el estado de visita cambio, reajusta el intervalo de polling.
+      if (wasActive != isActive) {
+        _startPolling(patientId, hasActiveVisit: isActive);
+      }
     } catch (_) {
       // Si falla el polling silencioso, mantenemos el ultimo estado.
     }

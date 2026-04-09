@@ -17,6 +17,25 @@ class CheckinPassParams {
   final String patientId;
   final int branchId;
   final List<int> studyIds;
+
+  @override
+  bool operator ==(Object other) =>
+      other is CheckinPassParams &&
+      other.patientId == patientId &&
+      other.branchId == branchId &&
+      _listEq(other.studyIds, studyIds);
+
+  static bool _listEq(List<int> a, List<int> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(patientId, branchId, Object.hashAll(studyIds));
 }
 
 final checkinPassProvider =

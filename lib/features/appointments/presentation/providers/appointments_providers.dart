@@ -140,6 +140,151 @@ final availableSlotsProvider =
   );
 });
 
+// ──────────────────────────────────────────────
+// Check-time: validar hora elegida por el paciente
+// ──────────────────────────────────────────────
+
+class CheckTimeQuery {
+  const CheckTimeQuery({
+    required this.branchId,
+    required this.date,
+    required this.time,
+    required this.studyIds,
+  });
+  final int branchId;
+  final String date;
+  final String time; // HH:mm
+  final List<int> studyIds;
+
+  @override
+  bool operator ==(Object other) =>
+      other is CheckTimeQuery &&
+      other.branchId == branchId &&
+      other.date == date &&
+      other.time == time &&
+      SlotsQuery._listEq(other.studyIds, studyIds);
+
+  @override
+  int get hashCode =>
+      Object.hash(branchId, date, time, Object.hashAll(studyIds));
+}
+
+class StudyAvailability {
+  const StudyAvailability({
+    required this.studyId,
+    required this.studyName,
+    required this.available,
+    required this.waitMin,
+    required this.serviceMin,
+    required this.saturationLevel,
+    required this.suggestedTime,
+    required this.roomsTotal,
+    required this.roomsOccupied,
+  });
+  final int studyId;
+  final String studyName;
+  final bool available;
+  final int waitMin;
+  final int serviceMin;
+  final String saturationLevel;
+  final String? suggestedTime;
+  final int roomsTotal;
+  final int roomsOccupied;
+
+  factory StudyAvailability.fromJson(Map<String, dynamic> j) {
+    return StudyAvailability(
+      studyId: (j['studyId'] as num).toInt(),
+      studyName: j['studyName'] as String? ?? '',
+      available: j['available'] as bool? ?? false,
+      waitMin: (j['waitMin'] as num?)?.toInt() ?? 0,
+      serviceMin: (j['serviceMin'] as num?)?.toInt() ?? 0,
+      saturationLevel: j['saturationLevel'] as String? ?? 'medio',
+      suggestedTime: j['suggestedTime'] as String?,
+      roomsTotal: (j['roomsTotal'] as num?)?.toInt() ?? 0,
+      roomsOccupied: (j['roomsOccupied'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
+class RecommendedSlot {
+  const RecommendedSlot({
+    required this.time,
+    required this.waitMin,
+    required this.totalEstimatedMin,
+    required this.saturationLevel,
+    required this.reason,
+  });
+  final String time;
+  final int waitMin;
+  final int totalEstimatedMin;
+  final String saturationLevel;
+  final String reason;
+
+  factory RecommendedSlot.fromJson(Map<String, dynamic> j) {
+    return RecommendedSlot(
+      time: j['time'] as String? ?? '',
+      waitMin: (j['waitMin'] as num?)?.toInt() ?? 0,
+      totalEstimatedMin: (j['totalEstimatedMin'] as num?)?.toInt() ?? 0,
+      saturationLevel: j['saturationLevel'] as String? ?? 'medio',
+      reason: j['reason'] as String? ?? '',
+    );
+  }
+}
+
+class CheckTimeResponse {
+  const CheckTimeResponse({
+    required this.feasible,
+    required this.reason,
+    required this.studies,
+    required this.totalEstimatedMin,
+    required this.orderedStudyIds,
+    required this.recommendedSlot,
+    required this.weeklyOpen,
+    required this.weeklyClose,
+  });
+  final bool feasible;
+  final String? reason;
+  final List<StudyAvailability> studies;
+  final int totalEstimatedMin;
+  final List<int> orderedStudyIds;
+  final RecommendedSlot? recommendedSlot;
+  final int weeklyOpen;
+  final int weeklyClose;
+
+  factory CheckTimeResponse.fromJson(Map<String, dynamic> j) {
+    final studies = (j['studies'] as List<dynamic>?) ?? [];
+    final rec = j['recommendedSlot'] as Map<String, dynamic>?;
+    final wh = j['weeklyHours'] as Map<String, dynamic>?;
+    return CheckTimeResponse(
+      feasible: j['feasible'] as bool? ?? false,
+      reason: j['reason'] as String?,
+      studies: studies
+          .cast<Map<String, dynamic>>()
+          .map(StudyAvailability.fromJson)
+          .toList(),
+      totalEstimatedMin: (j['totalEstimatedMin'] as num?)?.toInt() ?? 0,
+      orderedStudyIds:
+          ((j['orderedStudyIds'] as List<dynamic>?) ?? [])
+              .map((e) => (e as num).toInt())
+              .toList(),
+      recommendedSlot: rec != null ? RecommendedSlot.fromJson(rec) : null,
+      weeklyOpen: (wh?['open'] as num?)?.toInt() ?? 0,
+      weeklyClose: (wh?['close'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
+final checkTimeProvider =
+    FutureProvider.family<CheckTimeResponse, CheckTimeQuery>((ref, q) async {
+  final raw = await ref.watch(appointmentsRemoteProvider).checkTime(
+        branchId: q.branchId,
+        date: q.date,
+        time: q.time,
+        studyIds: q.studyIds,
+      );
+  return CheckTimeResponse.fromJson(raw);
+});
+
 class CreateAppointmentParams {
   CreateAppointmentParams({
     required this.branchId,

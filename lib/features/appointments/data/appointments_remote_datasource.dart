@@ -45,6 +45,26 @@ class AppointmentsRemoteDataSource {
     return res.data ?? const {};
   }
 
+  /// Valida una hora elegida por el paciente y devuelve disponibilidad
+  /// por cada servicio. Espejo de GET /reservaciones/check-time.
+  Future<Map<String, dynamic>> checkTime({
+    required int branchId,
+    required String date,
+    required String time,
+    required List<int> studyIds,
+  }) async {
+    final res = await _api.dio.get<Map<String, dynamic>>(
+      '/reservaciones/check-time',
+      queryParameters: {
+        'branchId': branchId,
+        'date': date,
+        'time': time,
+        'studyIds': studyIds.join(','),
+      },
+    );
+    return res.data ?? const {};
+  }
+
   Future<List<Appointment>> listForPatient(String patientId) async {
     final res = await _api.dio.get<List<dynamic>>(
       '/reservaciones/paciente/$patientId',

@@ -9,6 +9,7 @@ import '../../features/auth/presentation/providers/auth_providers.dart';
 import '../../features/branches/presentation/pages/branch_recommendation_page.dart';
 import '../../features/checkin/presentation/pages/clinical_validation_page.dart';
 import '../../features/checkin/presentation/pages/qr_pass_page.dart';
+import '../../features/services/presentation/providers/catalog_providers.dart';
 import '../../features/clinic_map/presentation/pages/clinic_map_page.dart';
 import '../../features/home/presentation/pages/home_dashboard_page.dart';
 import '../../features/home/presentation/pages/home_shell.dart';
@@ -127,7 +128,7 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/checkin',
         parentNavigatorKey: _rootKey,
-        builder: (_, __) => const QrPassPage(branchId: 0),
+        builder: (_, __) => const QrPassPage(branchId: CoyoacanBranch.id),
       ),
       GoRoute(
         path: '/checkin/:branchId',

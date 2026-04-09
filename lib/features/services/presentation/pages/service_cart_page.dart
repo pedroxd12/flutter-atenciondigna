@@ -28,12 +28,19 @@ class ServiceCartPage extends ConsumerStatefulWidget {
 }
 
 class _ServiceCartPageState extends ConsumerState<ServiceCartPage> {
-  // Inicializamos con la PROXIMA fecha valida (saltando dias cerrados o
-  // cuando hoy ya pasaron las horas habiles).
   DateTime _date = CoyoacanBranch.nextAvailableDate();
-  AvailableSlot? _selectedSlot;
+  TimeOfDay? _selectedTime;
   bool _submitting = false;
   Map<String, dynamic>? _result;
+
+  String get _dateStr => DateFormat('yyyy-MM-dd').format(_date);
+
+  String? get _timeStr {
+    if (_selectedTime == null) return null;
+    final h = _selectedTime!.hour.toString().padLeft(2, '0');
+    final m = _selectedTime!.minute.toString().padLeft(2, '0');
+    return '$h:$m';
+  }
 
   Future<void> _pickDate() async {
     final now = DateTime.now();
@@ -46,31 +53,41 @@ class _ServiceCartPageState extends ConsumerState<ServiceCartPage> {
       firstDate: DateTime(now.year, now.month, now.day),
       lastDate: now.add(const Duration(days: 60)),
       helpText: 'Cuando quieres agendar?',
-      // No permitimos seleccionar dias en los que la sucursal no abre.
       selectableDayPredicate: (d) => CoyoacanBranch.horarioPara(d) != null,
     );
     if (picked != null) {
       setState(() {
         _date = picked;
-        _selectedSlot = null; // resetea seleccion al cambiar de dia
+        _selectedTime = null;
       });
     }
   }
 
-  Future<void> _confirm() async {
+  Future<void> _pickTime() async {
+    final h = CoyoacanBranch.horarioPara(_date);
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: _selectedTime ?? TimeOfDay(hour: h?.open ?? 8, minute: 0),
+      helpText: 'Elige tu hora preferida',
+    );
+    if (picked != null && mounted) {
+      setState(() => _selectedTime = picked);
+    }
+  }
+
+  Future<void> _confirm(CheckTimeResponse check) async {
     final cart = ref.read(serviceCartProvider);
-    final slot = _selectedSlot;
-    if (cart.totalItems == 0 || slot == null) return;
+    if (cart.totalItems == 0 || _timeStr == null) return;
     setState(() => _submitting = true);
     try {
       final create = ref.read(createAppointmentProvider);
       final appt = await create(
         CreateAppointmentParams(
           branchId: CoyoacanBranch.id,
-          date: slot.date,
-          time: slot.time,
-          studyIds: slot.orderedStudyIds.isNotEmpty
-              ? slot.orderedStudyIds
+          date: _dateStr,
+          time: _timeStr,
+          studyIds: check.orderedStudyIds.isNotEmpty
+              ? check.orderedStudyIds
               : cart.idsEstudio,
         ),
       );
@@ -79,10 +96,12 @@ class _ServiceCartPageState extends ConsumerState<ServiceCartPage> {
         _result = {
           'id': appt.id,
           'date': appt.date,
-          'time': appt.time ?? slot.time,
-          'estimatedMin': slot.totalEstimatedMin,
-          'saturation': slot.saturationLevel,
-          'reason': slot.reason,
+          'time': appt.time ?? _timeStr,
+          'estimatedMin': check.totalEstimatedMin,
+          'saturation': check.studies.isNotEmpty
+              ? check.studies.first.saturationLevel
+              : 'bajo',
+          'reason': '',
         };
       });
     } catch (e) {
@@ -107,31 +126,18 @@ class _ServiceCartPageState extends ConsumerState<ServiceCartPage> {
       decimalDigits: 0,
     );
 
-    // Si el backend devuelve la lista vacia para la fecha actual, saltamos
-    // automaticamente al siguiente dia con horarios. Esto cubre el caso
-    // "hoy ya cerro la sucursal" o "no hay margen suficiente para las
-    // proximas horas".
-    if (cart.totalItems > 0 && _result == null) {
-      final query = SlotsQuery(
+    // Cuando el paciente ya eligio hora, consultamos check-time.
+    CheckTimeResponse? checkResult;
+    AsyncValue<CheckTimeResponse>? checkAsync;
+    if (_selectedTime != null && cart.totalItems > 0 && _result == null) {
+      final query = CheckTimeQuery(
         branchId: CoyoacanBranch.id,
-        date: DateFormat('yyyy-MM-dd').format(_date),
+        date: _dateStr,
+        time: _timeStr!,
         studyIds: cart.idsEstudio,
       );
-      ref.listen<AsyncValue<SlotsResponse>>(availableSlotsProvider(query),
-          (_, next) {
-        next.whenData((resp) {
-          if (resp.slots.isEmpty && mounted) {
-            final siguiente = CoyoacanBranch.nextAvailableAfter(_date);
-            // Solo avanzamos si efectivamente vamos hacia adelante.
-            if (siguiente.isAfter(_date)) {
-              setState(() {
-                _date = siguiente;
-                _selectedSlot = null;
-              });
-            }
-          }
-        });
-      });
+      checkAsync = ref.watch(checkTimeProvider(query));
+      checkResult = checkAsync?.valueOrNull;
     }
 
     return Scaffold(
@@ -169,16 +175,19 @@ class _ServiceCartPageState extends ConsumerState<ServiceCartPage> {
                   const _SectionLabel('Cuando quieres agendar?'),
                   const SizedBox(height: 8),
                   _DateCard(date: _date, onTap: _pickDate),
-                  const SizedBox(height: 18),
-                  const _SectionLabel('Horarios disponibles'),
+                  const SizedBox(height: 14),
+                  const _SectionLabel('A que hora quieres llegar?'),
                   const SizedBox(height: 8),
-                  _SlotsSection(
-                    branchId: CoyoacanBranch.id,
-                    date: DateFormat('yyyy-MM-dd').format(_date),
-                    studyIds: cart.idsEstudio,
-                    selected: _selectedSlot,
-                    onSelect: (s) => setState(() => _selectedSlot = s),
+                  _TimePickerCard(
+                    time: _selectedTime,
+                    onTap: _pickTime,
                   ),
+                  if (checkAsync != null) ...[
+                    const SizedBox(height: 18),
+                    const _SectionLabel('Disponibilidad por servicio'),
+                    const SizedBox(height: 8),
+                    _CheckTimeSection(async: checkAsync),
+                  ],
                   const SizedBox(height: 16),
                   _PreparationsRecap(idsEstudio: cart.idsEstudio),
                 ] else
@@ -192,9 +201,12 @@ class _ServiceCartPageState extends ConsumerState<ServiceCartPage> {
                 margin: const EdgeInsets.all(20),
                 child: _result == null
                     ? FilledButton.icon(
-                        onPressed: (_selectedSlot == null || _submitting)
+                        onPressed: (_selectedTime == null ||
+                                _submitting ||
+                                checkResult == null ||
+                                !checkResult.feasible)
                             ? null
-                            : _confirm,
+                            : () => _confirm(checkResult!),
                         icon: _submitting
                             ? const SizedBox(
                                 height: 18,
@@ -206,9 +218,13 @@ class _ServiceCartPageState extends ConsumerState<ServiceCartPage> {
                               )
                             : const Icon(Icons.event_available),
                         label: Text(
-                          _selectedSlot == null
-                              ? 'Elige un horario'
-                              : 'Confirmar a las ${_selectedSlot!.time}',
+                          _selectedTime == null
+                              ? 'Elige una hora'
+                              : checkResult == null
+                                  ? 'Verificando...'
+                                  : !checkResult.feasible
+                                      ? 'Hora no disponible'
+                                      : 'Confirmar a las $_timeStr',
                         ),
                         style: FilledButton.styleFrom(
                           minimumSize: const Size.fromHeight(54),
@@ -233,33 +249,48 @@ class _ServiceCartPageState extends ConsumerState<ServiceCartPage> {
 }
 
 // ──────────────────────────────────────────────
-// Slots picker
+// Time picker + per-study availability
 // ──────────────────────────────────────────────
 
-class _SlotsSection extends ConsumerWidget {
-  const _SlotsSection({
-    required this.branchId,
-    required this.date,
-    required this.studyIds,
-    required this.selected,
-    required this.onSelect,
-  });
-
-  final int branchId;
-  final String date;
-  final List<int> studyIds;
-  final AvailableSlot? selected;
-  final ValueChanged<AvailableSlot> onSelect;
+class _TimePickerCard extends StatelessWidget {
+  const _TimePickerCard({required this.time, required this.onTap});
+  final TimeOfDay? time;
+  final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final query = SlotsQuery(
-      branchId: branchId,
-      date: date,
-      studyIds: studyIds,
+  Widget build(BuildContext context) {
+    return Card(
+      child: ListTile(
+        leading: const Icon(Icons.access_time, color: AppColors.primary),
+        title: const Text(
+          'Hora de llegada',
+          style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+        ),
+        subtitle: Text(
+          time != null
+              ? '${time!.hour.toString().padLeft(2, '0')}:${time!.minute.toString().padLeft(2, '0')} hrs'
+              : 'Toca para elegir hora',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w800,
+            color: time != null
+                ? AppColors.textPrimary
+                : AppColors.textSecondary,
+          ),
+        ),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: onTap,
+      ),
     );
-    final async = ref.watch(availableSlotsProvider(query));
+  }
+}
 
+class _CheckTimeSection extends StatelessWidget {
+  const _CheckTimeSection({required this.async});
+  final AsyncValue<CheckTimeResponse> async;
+
+  @override
+  Widget build(BuildContext context) {
     return async.when(
       loading: () => Container(
         padding: const EdgeInsets.all(24),
@@ -270,74 +301,104 @@ class _SlotsSection extends ConsumerWidget {
         ),
         child: const Center(child: CircularProgressIndicator()),
       ),
-      error: (e, _) => _SlotsError(
-        message: 'No pudimos cargar horarios disponibles',
-        detail: e.toString(),
-        onRetry: () => ref.invalidate(availableSlotsProvider(query)),
+      error: (e, _) => Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Text(
+          'Error al verificar: $e',
+          style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+        ),
       ),
-      data: (resp) {
-        if (resp.slots.isEmpty) {
-          return _SlotsError(
-            message: resp.message ?? 'No hay horarios disponibles este dia',
-            detail: resp.weeklyClose > 0
-                ? 'Horario aplicable: ${resp.weeklyOpen}:00 - ${resp.weeklyClose}:00. '
-                    'Elige otro dia o reduce los servicios.'
-                : 'Elige otro dia o reduce los servicios.',
-            onRetry: () => ref.invalidate(availableSlotsProvider(query)),
-          );
-        }
-        return Column(
-          children: [
-            if (resp.weeklyClose > 0)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppColors.primarySoft,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Text(
-                    'Sucursal abierta de ${resp.weeklyOpen}:00 a '
-                    '${resp.weeklyClose}:00 este dia',
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.primary,
-                    ),
-                  ),
+      data: (resp) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Estado general
+          if (!resp.feasible && resp.reason != null)
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFEF2F2),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: const Color(0xFFDC2626).withValues(alpha: 0.3),
                 ),
               ),
-            for (final s in resp.slots)
-              _SlotTile(
-                slot: s,
-                selected: selected?.time == s.time && selected?.date == s.date,
-                onTap: () => onSelect(s),
+              child: Row(
+                children: [
+                  const Icon(Icons.warning_amber_rounded,
+                      color: Color(0xFFDC2626), size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      resp.reason!,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFFDC2626),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-          ],
-        );
-      },
+            ),
+
+          // Tarjeta por cada servicio
+          for (final s in resp.studies) _StudyAvailabilityCard(study: s),
+
+          // Tiempo total estimado
+          if (resp.feasible && resp.studies.isNotEmpty)
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(top: 4, bottom: 8),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF0FDF4),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: const Color(0xFF059669).withValues(alpha: 0.3),
+                ),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.check_circle,
+                      color: Color(0xFF059669), size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Todos tus servicios disponibles. '
+                      'Tiempo total estimado: ~${resp.totalEstimatedMin} min.',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF059669),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+          // Recomendacion del sistema
+          if (resp.recommendedSlot != null)
+            _RecommendedBanner(slot: resp.recommendedSlot!),
+        ],
+      ),
     );
   }
 }
 
-class _SlotTile extends StatelessWidget {
-  const _SlotTile({
-    required this.slot,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final AvailableSlot slot;
-  final bool selected;
-  final VoidCallback onTap;
+class _StudyAvailabilityCard extends StatelessWidget {
+  const _StudyAvailabilityCard({required this.study});
+  final StudyAvailability study;
 
   Color get _satColor {
-    switch (slot.saturationLevel) {
+    switch (study.saturationLevel) {
       case 'bajo':
         return const Color(0xFF059669);
       case 'medio':
@@ -351,7 +412,7 @@ class _SlotTile extends StatelessWidget {
   }
 
   String get _satLabel {
-    switch (slot.saturationLevel) {
+    switch (study.saturationLevel) {
       case 'bajo':
         return 'Poca espera';
       case 'medio':
@@ -361,230 +422,181 @@ class _SlotTile extends StatelessWidget {
       case 'critico':
         return 'Saturado';
     }
-    return slot.saturationLevel;
-  }
-
-  Color get _tagColor {
-    switch (slot.tag) {
-      case 'Recomendado':
-        return const Color(0xFF059669);
-      case 'Buena opcion':
-        return const Color(0xFF2563EB);
-      case 'Alta demanda':
-        return const Color(0xFFDC2626);
-    }
-    return Colors.transparent;
+    return study.saturationLevel;
   }
 
   @override
   Widget build(BuildContext context) {
+    final libre = study.roomsTotal - study.roomsOccupied;
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: selected
-              ? AppColors.primary
-              : (slot.recommended
-                  ? const Color(0xFF059669)
-                  : AppColors.border),
-          width: selected || slot.recommended ? 2 : 1,
+          color: study.available
+              ? const Color(0xFF059669).withValues(alpha: 0.4)
+              : const Color(0xFFDC2626).withValues(alpha: 0.4),
+          width: 1.5,
         ),
       ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Tag badge
-                if (slot.tag.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 3,
-                      ),
-                      decoration: BoxDecoration(
-                        color: _tagColor.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: _tagColor.withValues(alpha: 0.3),
-                        ),
-                      ),
-                      child: Text(
-                        slot.tag,
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                          color: _tagColor,
-                        ),
-                      ),
-                    ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                study.available ? Icons.check_circle : Icons.cancel,
+                color: study.available
+                    ? const Color(0xFF059669)
+                    : const Color(0xFFDC2626),
+                size: 22,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  capitalizeWords(study.studyName),
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
                   ),
-                Row(
-                  children: [
-                    // Hora
-                    Container(
-                      width: 56,
-                      height: 56,
-                      decoration: BoxDecoration(
-                        color: selected
-                            ? AppColors.primary
-                            : AppColors.primarySoft,
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      alignment: Alignment.center,
-                      child: Text(
-                        slot.time,
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800,
-                          color:
-                              selected ? Colors.white : AppColors.primary,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '~${slot.totalEstimatedMin.toStringAsFixed(0)} min en total',
-                            style: const TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            '${slot.waitMin} min espera + ${slot.serviceMin} min atencion',
-                            style: const TextStyle(
-                              fontSize: 11,
-                              color: AppColors.textSecondary,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Row(
-                            children: [
-                              Container(
-                                width: 8,
-                                height: 8,
-                                decoration: BoxDecoration(
-                                  color: _satColor,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                _satLabel,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: _satColor,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                '${slot.citasRegistradas} citas',
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  color: AppColors.textSecondary,
-                                ),
-                              ),
-                            ],
-                          ),
-                          if (slot.reason.isNotEmpty) ...[
-                            const SizedBox(height: 3),
-                            Text(
-                              slot.reason,
-                              style: const TextStyle(
-                                fontSize: 10,
-                                color: AppColors.textSecondary,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                    Icon(
-                      selected
-                          ? Icons.radio_button_checked
-                          : Icons.radio_button_unchecked,
-                      color: selected
-                          ? AppColors.primary
-                          : AppColors.textSecondary,
-                    ),
-                  ],
                 ),
-              ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: _satColor,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                _satLabel,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: _satColor,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                '~${study.waitMin} min espera',
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: AppColors.textSecondary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                '${study.serviceMin} min atencion',
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: AppColors.textSecondary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '$libre de ${study.roomsTotal} consultorios libres',
+            style: const TextStyle(
+              fontSize: 11,
+              color: AppColors.textSecondary,
             ),
           ),
-        ),
+          if (!study.available && study.suggestedTime != null) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFEF3C7),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.lightbulb_outline,
+                      size: 16, color: Color(0xFFB45309)),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Disponible a las ${study.suggestedTime}',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFFB45309),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
 }
 
-class _SlotsError extends StatelessWidget {
-  const _SlotsError({
-    required this.message,
-    required this.detail,
-    required this.onRetry,
-  });
-  final String message;
-  final String detail;
-  final VoidCallback onRetry;
+class _RecommendedBanner extends StatelessWidget {
+  const _RecommendedBanner({required this.slot});
+  final RecommendedSlot slot;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 4),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        gradient: const LinearGradient(
+          colors: [Color(0xFF2563EB), Color(0xFF3B82F6)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(
-            Icons.event_busy,
-            size: 40,
-            color: AppColors.textSecondary,
+          const Row(
+            children: [
+              Icon(Icons.auto_awesome, color: Colors.white, size: 18),
+              SizedBox(width: 8),
+              Text(
+                'Recomendacion del sistema',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           Text(
-            message,
-            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            detail,
+            '${slot.time} hrs — ~${slot.totalEstimatedMin} min total, '
+            '${slot.waitMin} min espera',
             style: const TextStyle(
-              fontSize: 11,
-              color: AppColors.textSecondary,
+              color: Colors.white,
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
             ),
-            textAlign: TextAlign.center,
-            maxLines: 3,
-            overflow: TextOverflow.ellipsis,
           ),
-          const SizedBox(height: 10),
-          TextButton.icon(
-            onPressed: onRetry,
-            icon: const Icon(Icons.refresh, size: 16),
-            label: const Text('Reintentar'),
-          ),
+          if (slot.reason.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              slot.reason,
+              style: const TextStyle(color: Colors.white70, fontSize: 11),
+            ),
+          ],
         ],
       ),
     );

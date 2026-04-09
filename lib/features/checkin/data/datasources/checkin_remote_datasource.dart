@@ -19,13 +19,18 @@ class CheckinRemoteDataSource {
       },
     );
     final j = res.data!;
+    // Usamos patientId/branchId del request porque el backend puede
+    // omitirlos del response (whitelist de NestJS los descarta del DTO
+    // si falta decorador). El QR se construye en el cliente con datos
+    // correctos via toQrPayload().
+    final parsedStudyIds = (j['studyIds'] as List<dynamic>)
+        .map((e) => (e as num).toInt())
+        .toList();
     return CheckinPass(
       token: j['token'] as String,
-      patientId: j['patientId'] as String,
-      branchId: (j['branchId'] as num).toInt(),
-      studyIds: (j['studyIds'] as List<dynamic>)
-          .map((e) => (e as num).toInt())
-          .toList(),
+      patientId: (j['patientId'] as String?) ?? patientId,
+      branchId: (j['branchId'] as num?)?.toInt() ?? branchId,
+      studyIds: parsedStudyIds,
       issuedAt: DateTime.parse(j['issuedAt'] as String),
       expiresAt: DateTime.parse(j['expiresAt'] as String),
     );
