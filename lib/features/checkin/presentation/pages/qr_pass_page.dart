@@ -4,7 +4,9 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
+import '../../../../core/messages/patient_messages.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/widgets/message_banner.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../../studies/presentation/providers/studies_providers.dart';
 import '../providers/checkin_providers.dart';
@@ -47,19 +49,14 @@ class QrPassPage extends ConsumerWidget {
           ),
         );
 
+        final patient =
+            ref.watch(authControllerProvider).valueOrNull;
+        final nombre = patient?.firstName ?? 'paciente';
+
         return Scaffold(
           backgroundColor: AppColors.background,
           appBar: AppBar(
             title: const Text('Mi pase de entrada'),
-            actions: [
-              Padding(
-                padding: const EdgeInsets.only(right: 16),
-                child: CircleAvatar(
-                  backgroundColor: AppColors.primarySoft,
-                  child: const Icon(Icons.person, color: AppColors.primary),
-                ),
-              ),
-            ],
           ),
           body: passAsync.when(
             loading: () => const Center(child: CircularProgressIndicator()),
@@ -68,26 +65,18 @@ class QrPassPage extends ConsumerWidget {
               padding: const EdgeInsets.all(20),
               child: Column(
                 children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 8,
+                  // Mensaje de bienvenida
+                  MessageBanner(
+                    message: PatientMessages.welcome(
+                      nombre,
+                      'Coyoacan',
                     ),
-                    decoration: BoxDecoration(
-                      color: AppColors.primarySoft,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      mainStudy.toUpperCase(),
-                      style: const TextStyle(
-                        color: AppColors.primary,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 13,
-                        letterSpacing: 0.6,
-                      ),
-                    ),
+                    icon: Icons.waving_hand_rounded,
+                    style: MessageBannerStyle.success,
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 20),
+
+                  // Titulo
                   const Text(
                     'Tu cita confirmada',
                     style: TextStyle(
@@ -95,8 +84,28 @@ class QrPassPage extends ConsumerWidget {
                       fontWeight: FontWeight.w800,
                     ),
                   ),
+                  const SizedBox(height: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.primarySoft,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      mainStudy,
+                      style: const TextStyle(
+                        color: AppColors.primary,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
                   const SizedBox(height: 18),
-                  // Tarjeta de hora + ubicacion
+
+                  // Hora + ubicacion
                   Card(
                     child: Column(
                       children: [
@@ -118,6 +127,7 @@ class QrPassPage extends ConsumerWidget {
                     ),
                   ),
                   const SizedBox(height: 20),
+
                   // QR
                   Container(
                     padding: const EdgeInsets.all(24),
@@ -131,7 +141,7 @@ class QrPassPage extends ConsumerWidget {
                         QrImageView(
                           data: pass.toQrPayload(),
                           version: QrVersions.auto,
-                          size: 220,
+                          size: 200,
                           eyeStyle: const QrEyeStyle(
                             eyeShape: QrEyeShape.square,
                             color: AppColors.textPrimary,
@@ -141,7 +151,7 @@ class QrPassPage extends ConsumerWidget {
                             color: AppColors.textPrimary,
                           ),
                         ),
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 10),
                         Text(
                           'Valido hasta ${DateFormat('h:mm a').format(pass.expiresAt)}',
                           style: const TextStyle(
@@ -152,8 +162,9 @@ class QrPassPage extends ConsumerWidget {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 24),
-                  // Pasos rapidos
+                  const SizedBox(height: 20),
+
+                  // Pasos sencillos
                   Container(
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
@@ -165,28 +176,40 @@ class QrPassPage extends ConsumerWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'PASOS RAPIDOS',
+                          'QUE HACER AHORA',
                           style: TextStyle(
-                            fontSize: 12,
+                            fontSize: 11,
                             fontWeight: FontWeight.w800,
                             color: AppColors.textSecondary,
-                            letterSpacing: 1,
+                            letterSpacing: 0.8,
                           ),
                         ),
+                        SizedBox(height: 14),
+                        _Step(
+                          number: 1,
+                          text: 'Acercate al area de recepcion',
+                        ),
                         SizedBox(height: 12),
-                        _Step(number: 1, text: 'Acercate al filtro'),
-                        SizedBox(height: 10),
-                        _Step(number: 2, text: 'Escanea o muestra el codigo'),
-                        SizedBox(height: 10),
-                        _Step(number: 3, text: 'Toma tu turno'),
+                        _Step(
+                          number: 2,
+                          text: 'Escanea este codigo QR',
+                        ),
+                        SizedBox(height: 12),
+                        _Step(
+                          number: 3,
+                          text: 'Espera tu turno en la app',
+                        ),
                       ],
                     ),
                   ),
                   const SizedBox(height: 24),
-                  FilledButton.icon(
-                    onPressed: () => context.push('/clinical-validation'),
-                    icon: const Icon(Icons.verified_user_outlined),
-                    label: const Text('Continuar al check-in'),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: () => context.push('/clinical-validation'),
+                      icon: const Icon(Icons.verified_user_outlined),
+                      label: const Text('Continuar al check-in'),
+                    ),
                   ),
                   const SizedBox(height: 12),
                   Row(

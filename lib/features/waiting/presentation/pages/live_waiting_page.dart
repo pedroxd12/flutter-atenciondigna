@@ -2,7 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/messages/patient_messages.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/widgets/message_banner.dart';
+import '../../../auth/presentation/providers/auth_providers.dart';
+import '../../../studies/presentation/providers/studies_providers.dart';
 import '../../domain/entities/wait_status.dart';
 import '../providers/waiting_providers.dart';
 
@@ -47,20 +51,24 @@ class _WaitingBody extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final queueAsync = ref.watch(waitQueueProvider);
+    final nombre =
+        ref.watch(authControllerProvider).valueOrNull?.firstName ?? 'paciente';
+    final studiesAsync = ref.watch(todaysStudiesProvider);
 
     return RefreshIndicator(
       onRefresh: () async {
         ref.invalidate(waitQueueProvider);
       },
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
         children: [
+          // Folio o aviso de check-in
           if (status.folio != null)
             Center(
               child: Column(
                 children: [
                   const Text(
-                    'FOLIO',
+                    'TU FOLIO',
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w700,
@@ -81,41 +89,49 @@ class _WaitingBody extends ConsumerWidget {
               ),
             ),
           if (status.folio == null)
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: AppColors.warning.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: AppColors.warning.withValues(alpha: 0.4),
-                ),
-              ),
-              child: const Row(
-                children: [
-                  Icon(Icons.info_outline, color: AppColors.warning),
-                  SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'Aun no se asigna folio. Acude a recepcion o realiza tu check-in.',
-                      style: TextStyle(fontSize: 13),
-                    ),
-                  ),
-                ],
-              ),
+            MessageBanner(
+              message:
+                  'Aun no se asigna folio. Acude a recepcion o realiza tu check-in.',
+              style: MessageBannerStyle.warning,
             ),
-          const SizedBox(height: 24),
+
+          const SizedBox(height: 16),
+
+          // Mensaje de estimacion de tiempo
+          MessageBanner(
+            message: PatientMessages.timeEstimate(
+              nombre,
+              status.estimatedMinutes.toInt(),
+            ),
+            icon: Icons.timer_outlined,
+            style: MessageBannerStyle.success,
+          ),
+
+          const SizedBox(height: 16),
+
+          // Estudio actual
           Container(
-            padding: const EdgeInsets.all(28),
+            padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
               gradient: const LinearGradient(
                 colors: [AppColors.primary, AppColors.primaryDark],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
-              borderRadius: BorderRadius.circular(24),
+              borderRadius: BorderRadius.circular(22),
             ),
             child: Column(
               children: [
+                const Text(
+                  'SIGUIENTE ESTUDIO',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.8,
+                  ),
+                ),
+                const SizedBox(height: 8),
                 Text(
                   status.currentStudy,
                   style: const TextStyle(
@@ -128,12 +144,14 @@ class _WaitingBody extends ConsumerWidget {
                 const SizedBox(height: 6),
                 Text(
                   status.area,
-                  style: const TextStyle(color: Colors.white70),
+                  style: const TextStyle(color: Colors.white70, fontSize: 14),
                 ),
               ],
             ),
           ),
           const SizedBox(height: 16),
+
+          // Posicion y tiempo
           Row(
             children: [
               Expanded(
@@ -191,7 +209,45 @@ class _WaitingBody extends ConsumerWidget {
               ),
             ],
           ),
-          const SizedBox(height: 22),
+          const SizedBox(height: 16),
+
+          // Mensaje de "mantente atento"
+          MessageBanner(
+            message: PatientMessages.stayAlert(nombre),
+            icon: Icons.phone_android_rounded,
+            style: MessageBannerStyle.info,
+          ),
+
+          const SizedBox(height: 20),
+
+          // Tips contextuales segun estudios
+          studiesAsync.when(
+            loading: () => const SizedBox.shrink(),
+            error: (_, __) => const SizedBox.shrink(),
+            data: (studies) {
+              final tips = PatientMessages.tipsForStudies(nombre, studies);
+              if (tips.isEmpty) return const SizedBox.shrink();
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'INFORMACION IMPORTANTE',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.textSecondary,
+                      letterSpacing: 0.8,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  MessageTipsList(tips: tips),
+                  const SizedBox(height: 10),
+                ],
+              );
+            },
+          ),
+
+          // Lista de espera
           const Text(
             'LISTA DE ESPERA',
             style: TextStyle(
@@ -314,46 +370,59 @@ class _PatientRow extends StatelessWidget {
   }
 }
 
-class _YourTurnView extends StatelessWidget {
+class _YourTurnView extends ConsumerWidget {
   const _YourTurnView({required this.status});
   final WaitStatus status;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final nombre =
+        ref.watch(authControllerProvider).valueOrNull?.firstName ?? 'paciente';
+
     return Padding(
       padding: const EdgeInsets.all(24),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Container(
-            width: 120,
-            height: 120,
-            decoration: BoxDecoration(
+            width: 110,
+            height: 110,
+            decoration: const BoxDecoration(
               color: AppColors.primarySoft,
               shape: BoxShape.circle,
             ),
             child: const Icon(
               Icons.notifications_active,
-              size: 64,
+              size: 56,
               color: AppColors.primary,
             ),
           ),
-          const SizedBox(height: 28),
-          const Text(
-            'Es tu turno',
-            style: TextStyle(fontSize: 30, fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 24),
           Text(
-            status.area.isEmpty ? 'Acude al consultorio asignado' : 'Dirigete a ${status.area}',
+            '$nombre, es tu turno!',
+            style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800),
             textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 17),
           ),
-          const SizedBox(height: 32),
-          FilledButton.icon(
-            onPressed: () => context.push('/clinic-map'),
-            icon: const Icon(Icons.directions_walk),
-            label: const Text('Como llego'),
+          const SizedBox(height: 10),
+          Text(
+            status.area.isEmpty
+                ? 'Acude al consultorio asignado'
+                : 'Dirigete a ${status.area}',
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 16,
+              color: AppColors.textSecondary,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 28),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: () => context.push('/clinic-map'),
+              icon: const Icon(Icons.directions_walk),
+              label: const Text('Como llego'),
+            ),
           ),
         ],
       ),

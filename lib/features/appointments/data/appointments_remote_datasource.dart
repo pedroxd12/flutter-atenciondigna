@@ -31,7 +31,7 @@ class AppointmentsRemoteDataSource {
     required int branchId,
     required String date,
     required List<int> studyIds,
-    int topN = 8,
+    int topN = 12,
   }) async {
     final res = await _api.dio.get<Map<String, dynamic>>(
       '/reservaciones/slots',

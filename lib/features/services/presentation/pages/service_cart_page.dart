@@ -28,19 +28,26 @@ class ServiceCartPage extends ConsumerStatefulWidget {
 }
 
 class _ServiceCartPageState extends ConsumerState<ServiceCartPage> {
-  DateTime _date = DateTime.now();
+  // Inicializamos con la PROXIMA fecha valida (saltando dias cerrados o
+  // cuando hoy ya pasaron las horas habiles).
+  DateTime _date = CoyoacanBranch.nextAvailableDate();
   AvailableSlot? _selectedSlot;
   bool _submitting = false;
   Map<String, dynamic>? _result;
 
   Future<void> _pickDate() async {
     final now = DateTime.now();
+    final initial = CoyoacanBranch.horarioPara(_date) != null
+        ? (_date.isBefore(now) ? CoyoacanBranch.nextAvailableDate() : _date)
+        : CoyoacanBranch.nextAvailableDate();
     final picked = await showDatePicker(
       context: context,
-      initialDate: _date.isBefore(now) ? now : _date,
-      firstDate: now,
+      initialDate: initial,
+      firstDate: DateTime(now.year, now.month, now.day),
       lastDate: now.add(const Duration(days: 60)),
       helpText: 'Cuando quieres agendar?',
+      // No permitimos seleccionar dias en los que la sucursal no abre.
+      selectableDayPredicate: (d) => CoyoacanBranch.horarioPara(d) != null,
     );
     if (picked != null) {
       setState(() {
@@ -99,6 +106,33 @@ class _ServiceCartPageState extends ConsumerState<ServiceCartPage> {
       symbol: '\$',
       decimalDigits: 0,
     );
+
+    // Si el backend devuelve la lista vacia para la fecha actual, saltamos
+    // automaticamente al siguiente dia con horarios. Esto cubre el caso
+    // "hoy ya cerro la sucursal" o "no hay margen suficiente para las
+    // proximas horas".
+    if (cart.totalItems > 0 && _result == null) {
+      final query = SlotsQuery(
+        branchId: CoyoacanBranch.id,
+        date: DateFormat('yyyy-MM-dd').format(_date),
+        studyIds: cart.idsEstudio,
+      );
+      ref.listen<AsyncValue<SlotsResponse>>(availableSlotsProvider(query),
+          (_, next) {
+        next.whenData((resp) {
+          if (resp.slots.isEmpty && mounted) {
+            final siguiente = CoyoacanBranch.nextAvailableAfter(_date);
+            // Solo avanzamos si efectivamente vamos hacia adelante.
+            if (siguiente.isAfter(_date)) {
+              setState(() {
+                _date = siguiente;
+                _selectedSlot = null;
+              });
+            }
+          }
+        });
+      });
+    }
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -241,20 +275,47 @@ class _SlotsSection extends ConsumerWidget {
         detail: e.toString(),
         onRetry: () => ref.invalidate(availableSlotsProvider(query)),
       ),
-      data: (slots) {
-        if (slots.isEmpty) {
+      data: (resp) {
+        if (resp.slots.isEmpty) {
           return _SlotsError(
-            message: 'No hay horarios disponibles este dia',
-            detail: 'Intenta con otra fecha o reduce los servicios.',
+            message: resp.message ?? 'No hay horarios disponibles este dia',
+            detail: resp.weeklyClose > 0
+                ? 'Horario aplicable: ${resp.weeklyOpen}:00 - ${resp.weeklyClose}:00. '
+                    'Elige otro dia o reduce los servicios.'
+                : 'Elige otro dia o reduce los servicios.',
             onRetry: () => ref.invalidate(availableSlotsProvider(query)),
           );
         }
         return Column(
           children: [
-            for (final s in slots)
+            if (resp.weeklyClose > 0)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.primarySoft,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    'Sucursal abierta de ${resp.weeklyOpen}:00 a '
+                    '${resp.weeklyClose}:00 este dia',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.primary,
+                    ),
+                  ),
+                ),
+              ),
+            for (final s in resp.slots)
               _SlotTile(
                 slot: s,
-                selected: selected?.hour == s.hour && selected?.date == s.date,
+                selected: selected?.time == s.time && selected?.date == s.date,
                 onTap: () => onSelect(s),
               ),
           ],
@@ -303,6 +364,18 @@ class _SlotTile extends StatelessWidget {
     return slot.saturationLevel;
   }
 
+  Color get _tagColor {
+    switch (slot.tag) {
+      case 'Recomendado':
+        return const Color(0xFF059669);
+      case 'Buena opcion':
+        return const Color(0xFF2563EB);
+      case 'Alta demanda':
+        return const Color(0xFFDC2626);
+    }
+    return Colors.transparent;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -311,8 +384,12 @@ class _SlotTile extends StatelessWidget {
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: selected ? AppColors.primary : AppColors.border,
-          width: selected ? 2 : 1,
+          color: selected
+              ? AppColors.primary
+              : (slot.recommended
+                  ? const Color(0xFF059669)
+                  : AppColors.border),
+          width: selected || slot.recommended ? 2 : 1,
         ),
       ),
       child: Material(
@@ -322,94 +399,133 @@ class _SlotTile extends StatelessWidget {
           onTap: onTap,
           child: Padding(
             padding: const EdgeInsets.all(14),
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  width: 56,
-                  height: 56,
-                  decoration: BoxDecoration(
-                    color: selected
-                        ? AppColors.primary
-                        : AppColors.primarySoft,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    slot.time,
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w800,
-                      color: selected ? Colors.white : AppColors.primary,
+                // Tag badge
+                if (slot.tag.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _tagColor.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: _tagColor.withValues(alpha: 0.3),
+                        ),
+                      ),
+                      child: Text(
+                        slot.tag,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          color: _tagColor,
+                        ),
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '~${slot.totalEstimatedMin.toStringAsFixed(0)} min en total',
-                        style: const TextStyle(
+                Row(
+                  children: [
+                    // Hora
+                    Container(
+                      width: 56,
+                      height: 56,
+                      decoration: BoxDecoration(
+                        color: selected
+                            ? AppColors.primary
+                            : AppColors.primarySoft,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        slot.time,
+                        style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w800,
+                          color:
+                              selected ? Colors.white : AppColors.primary,
                         ),
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '${slot.waitMin} min de espera + ${slot.serviceMin} min de atencion',
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: AppColors.textSecondary,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Container(
-                            width: 8,
-                            height: 8,
-                            decoration: BoxDecoration(
-                              color: _satColor,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                          const SizedBox(width: 6),
                           Text(
-                            _satLabel,
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: _satColor,
-                              fontWeight: FontWeight.w700,
+                            '~${slot.totalEstimatedMin.toStringAsFixed(0)} min en total',
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
                             ),
                           ),
-                          if (slot.reason.isNotEmpty) ...[
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: Text(
-                                '· ${slot.reason}',
+                          const SizedBox(height: 2),
+                          Text(
+                            '${slot.waitMin} min espera + ${slot.serviceMin} min atencion',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: AppColors.textSecondary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              Container(
+                                width: 8,
+                                height: 8,
+                                decoration: BoxDecoration(
+                                  color: _satColor,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                _satLabel,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: _satColor,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                '${slot.citasRegistradas} citas',
                                 style: const TextStyle(
                                   fontSize: 11,
                                   color: AppColors.textSecondary,
                                 ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
                               ),
+                            ],
+                          ),
+                          if (slot.reason.isNotEmpty) ...[
+                            const SizedBox(height: 3),
+                            Text(
+                              slot.reason,
+                              style: const TextStyle(
+                                fontSize: 10,
+                                color: AppColors.textSecondary,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ],
                         ],
                       ),
-                    ],
-                  ),
-                ),
-                Icon(
-                  selected
-                      ? Icons.radio_button_checked
-                      : Icons.radio_button_unchecked,
-                  color: selected
-                      ? AppColors.primary
-                      : AppColors.textSecondary,
+                    ),
+                    Icon(
+                      selected
+                          ? Icons.radio_button_checked
+                          : Icons.radio_button_unchecked,
+                      color: selected
+                          ? AppColors.primary
+                          : AppColors.textSecondary,
+                    ),
+                  ],
                 ),
               ],
             ),

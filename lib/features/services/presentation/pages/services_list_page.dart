@@ -215,11 +215,6 @@ class _CategoryHeader extends StatelessWidget {
                 label: '${category.items.length} servicios',
                 icon: Icons.list_alt,
               ),
-              const SizedBox(width: 8),
-              _Pill(
-                label: '~${category.tiempoTotalVigenteMin} min total',
-                icon: Icons.schedule,
-              ),
             ],
           ),
         ],
@@ -332,28 +327,15 @@ class _ServiceCard extends StatelessWidget {
                   ],
                 ],
               ),
-              const SizedBox(height: 10),
-              // Badges en su propia fila con Wrap — soporta nombres largos
-              // sin generar overflow horizontal.
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: [
-                  if (isPaquete)
-                    const _Badge(
-                      label: 'Paquete',
-                      icon: Icons.inventory_2,
-                      color: AppColors.primary,
-                      bg: AppColors.primarySoft,
-                    ),
-                  _Badge(
-                    label: '~${category.tiempoTotalVigenteMin} min',
-                    icon: Icons.schedule,
-                    color: const Color(0xFF4338CA),
-                    bg: const Color(0xFFEEF2FF),
-                  ),
-                ],
-              ),
+              if (isPaquete) ...[
+                const SizedBox(height: 10),
+                const _Badge(
+                  label: 'Paquete',
+                  icon: Icons.inventory_2,
+                  color: AppColors.primary,
+                  bg: AppColors.primarySoft,
+                ),
+              ],
               const SizedBox(height: 10),
               // Boton de agregar al carrito ocupa el ancho completo.
               SizedBox(
@@ -527,18 +509,15 @@ class _ServiceDetailSheet extends ConsumerWidget {
               ),
             const SizedBox(height: 14),
             _InfoRow(
-              icon: Icons.schedule,
-              title: 'Tiempo aproximado total',
-              detail:
-                  '~${category.tiempoTotalVigenteMin} min '
-                  '(${category.tiempoEsperaVigenteMin} de espera + '
-                  '${category.tiempoServicioMin} de atencion)',
-            ),
-            const SizedBox(height: 10),
-            _InfoRow(
               icon: Icons.location_on,
               title: 'Sucursal',
               detail: 'Coyoacan · Av. Universidad 1330',
+            ),
+            const SizedBox(height: 10),
+            const _InfoRow(
+              icon: Icons.info_outline,
+              title: 'Tiempo estimado',
+              detail: 'Se calcula al elegir el horario de tu cita',
             ),
             const SizedBox(height: 16),
             _PreparationBlock(category: category),

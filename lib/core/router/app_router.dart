@@ -20,6 +20,7 @@ import '../../features/services/presentation/pages/services_list_page.dart';
 import '../../features/studies/presentation/pages/preparations_page.dart';
 import '../../features/studies/presentation/pages/studies_order_page.dart';
 import '../../features/survey/presentation/pages/satisfaction_survey_page.dart';
+import '../../features/tracking/presentation/pages/tracking_page.dart';
 import '../../features/waiting/presentation/pages/live_waiting_page.dart';
 
 final _rootKey = GlobalKey<NavigatorState>();
@@ -77,14 +78,6 @@ final goRouterProvider = Provider<GoRouter>((ref) {
           StatefulShellBranch(
             routes: [
               GoRoute(
-                path: '/waiting',
-                builder: (_, __) => const LiveWaitingPage(),
-              ),
-            ],
-          ),
-          StatefulShellBranch(
-            routes: [
-              GoRoute(
                 path: '/results',
                 builder: (_, __) => const ResultsListPage(),
               ),
@@ -121,6 +114,11 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         builder: (_, __) => const RequestServicePage(),
       ),
       GoRoute(
+        path: '/waiting',
+        parentNavigatorKey: _rootKey,
+        builder: (_, __) => const LiveWaitingPage(),
+      ),
+      GoRoute(
         path: '/preparations',
         parentNavigatorKey: _rootKey,
         builder: (_, __) => const PreparationsPage(),
@@ -146,7 +144,11 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/clinic-map',
         parentNavigatorKey: _rootKey,
-        builder: (_, __) => const ClinicMapPage(),
+        builder: (_, state) {
+          final studyId =
+              state.uri.queryParameters['studyId'];
+          return ClinicMapPage(studyId: studyId);
+        },
       ),
       GoRoute(
         path: '/services',
@@ -164,6 +166,11 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         builder: (_, state) => ServicesListPage(
           idEstudio: int.parse(state.pathParameters['idEstudio']!),
         ),
+      ),
+      GoRoute(
+        path: '/tracking',
+        parentNavigatorKey: _rootKey,
+        builder: (_, __) => const TrackingPage(),
       ),
       GoRoute(
         path: '/survey',

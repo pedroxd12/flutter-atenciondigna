@@ -51,24 +51,33 @@ class AvailableSlot {
     required this.score,
     required this.reason,
     required this.orderedStudyIds,
+    required this.citasRegistradas,
+    required this.capacidadLibre,
+    required this.recommended,
+    required this.tag,
   });
   final String date;
   final int hour;
   final String time;
-
-  /// Tiempo de espera predicho por el modelo IA.
   final int waitMin;
-
-  /// Tiempo de atencion (consultorio efectivo) sumado de los estudios.
   final int serviceMin;
-
-  /// waitMin + serviceMin: el total que ve el paciente.
   final double totalEstimatedMin;
-
-  final String saturationLevel; // bajo|medio|alto|critico
+  final String saturationLevel;
   final double score;
   final String reason;
   final List<int> orderedStudyIds;
+
+  /// Cuantas citas ya hay registradas a esa hora.
+  final int citasRegistradas;
+
+  /// Cuantos consultorios quedan libres a esa hora.
+  final int capacidadLibre;
+
+  /// True si el motor lo marca como el mejor slot.
+  final bool recommended;
+
+  /// Tag visible: "Recomendado", "Buena opcion", "Alta demanda", "".
+  final String tag;
 
   factory AvailableSlot.fromJson(Map<String, dynamic> j) {
     final wait = (j['waitMin'] as num?)?.toInt() ?? 0;
@@ -88,25 +97,47 @@ class AvailableSlot {
       orderedStudyIds: ((j['orderedStudyIds'] as List<dynamic>?) ?? const [])
           .map((e) => (e as num).toInt())
           .toList(),
+      citasRegistradas: (j['citasRegistradas'] as num?)?.toInt() ?? 0,
+      capacidadLibre: (j['capacidadLibre'] as num?)?.toInt() ?? 0,
+      recommended: (j['recommended'] as bool?) ?? false,
+      tag: (j['tag'] as String?) ?? '',
     );
   }
 }
 
-/// Slots disponibles para un (sucursal, fecha, estudios). Devuelve lista
-/// vacia si la red falla — la UI muestra el estado correspondiente.
+class SlotsResponse {
+  const SlotsResponse({
+    required this.slots,
+    required this.message,
+    required this.weeklyOpen,
+    required this.weeklyClose,
+  });
+  final List<AvailableSlot> slots;
+  final String? message;
+  final int weeklyOpen;
+  final int weeklyClose;
+}
+
+/// Slots disponibles para un (sucursal, fecha, estudios).
 final availableSlotsProvider =
-    FutureProvider.family<List<AvailableSlot>, SlotsQuery>((ref, q) async {
+    FutureProvider.family<SlotsResponse, SlotsQuery>((ref, q) async {
   final raw = await ref.watch(appointmentsRemoteProvider).availableSlots(
         branchId: q.branchId,
         date: q.date,
         studyIds: q.studyIds,
-        topN: 8,
+        topN: 12,
       );
   final list = (raw['slots'] as List<dynamic>?) ?? const [];
-  return list
-      .cast<Map<String, dynamic>>()
-      .map(AvailableSlot.fromJson)
-      .toList();
+  final wh = raw['weeklyHours'] as Map<String, dynamic>?;
+  return SlotsResponse(
+    slots: list
+        .cast<Map<String, dynamic>>()
+        .map(AvailableSlot.fromJson)
+        .toList(),
+    message: raw['message'] as String?,
+    weeklyOpen: (wh?['open'] as num?)?.toInt() ?? 0,
+    weeklyClose: (wh?['close'] as num?)?.toInt() ?? 0,
+  );
 });
 
 class CreateAppointmentParams {

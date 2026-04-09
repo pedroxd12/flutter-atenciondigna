@@ -332,32 +332,6 @@ class _CategoryCard extends StatelessWidget {
                   fontWeight: FontWeight.w600,
                 ),
               ),
-              const SizedBox(height: 2),
-              Row(
-                children: [
-                  if (category.tiempoEsperaActualMin != null) ...[
-                    const Icon(
-                      Icons.bolt,
-                      size: 11,
-                      color: AppColors.primary,
-                    ),
-                    const SizedBox(width: 2),
-                  ],
-                  Flexible(
-                    child: Text(
-                      '~${category.tiempoTotalVigenteMin} min',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w800,
-                        color: category.tiempoEsperaActualMin != null
-                            ? AppColors.primary
-                            : AppColors.textSecondary,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
             ],
           ),
         ),

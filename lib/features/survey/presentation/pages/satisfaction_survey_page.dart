@@ -7,10 +7,10 @@ import '../../domain/entities/survey_answer.dart';
 import '../providers/survey_providers.dart';
 
 const _questions = <_Question>[
-  _Question('q1', 'Como calificas el tiempo de espera?'),
-  _Question('q2', 'Que tan claro fue el orden de tus estudios?'),
-  _Question('q3', 'Como fue la atencion del personal?'),
-  _Question('q4', 'Recomendarias esta sucursal?'),
+  _Question('espera', 'Como calificas el tiempo de espera?'),
+  _Question('app', 'Que tan util fue la app durante tu visita?'),
+  _Question('trato', 'Como fue el trato del personal?'),
+  _Question('general', 'En general, como calificas tu experiencia?'),
 ];
 
 class SatisfactionSurveyPage extends ConsumerStatefulWidget {

@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/messages/patient_messages.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/widgets/message_banner.dart';
+import '../../../auth/presentation/providers/auth_providers.dart';
 import '../providers/studies_providers.dart';
 
 class PreparationsPage extends ConsumerWidget {
@@ -10,51 +13,84 @@ class PreparationsPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final studiesAsync = ref.watch(todaysStudiesProvider);
+    final nombre =
+        ref.watch(authControllerProvider).valueOrNull?.firstName ?? 'paciente';
 
     return Scaffold(
       appBar: AppBar(title: const Text('Preparaciones')),
       body: studiesAsync.when(
         data: (studies) {
-          final withPrep = studies
-              .where((s) => s.preparations.isNotEmpty)
-              .toList();
+          final withPrep =
+              studies.where((s) => s.preparations.isNotEmpty).toList();
           if (withPrep.isEmpty) {
-            return const Center(
-              child: Text('No tienes preparaciones pendientes.'),
-            );
-          }
-          return ListView(
-            padding: const EdgeInsets.all(20),
-            children: [
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: AppColors.primary.withValues(alpha: 0.3),
-                  ),
-                ),
-                child: const Row(
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(
-                      Icons.notifications_active,
-                      color: AppColors.primary,
+                    const Icon(
+                      Icons.check_circle_outline,
+                      size: 56,
+                      color: AppColors.success,
                     ),
-                    SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'Te enviaremos un recordatorio push antes de cada estudio.',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: AppColors.textPrimary,
-                        ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Sin preparaciones pendientes',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '$nombre, tus estudios de hoy no requieren preparacion especial.',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: AppColors.textSecondary,
+                        height: 1.4,
                       ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 20),
+            );
+          }
+
+          final tips = PatientMessages.tipsForStudies(nombre, studies);
+
+          return ListView(
+            padding: const EdgeInsets.all(20),
+            children: [
+              // Recordatorio push
+              const MessageBanner(
+                message:
+                    'Te enviaremos un recordatorio antes de cada estudio que requiera preparacion.',
+                icon: Icons.notifications_active_outlined,
+                style: MessageBannerStyle.info,
+              ),
+              const SizedBox(height: 14),
+
+              // Orquestacion si aplica
+              if (studies.any((s) => s.requiresPreparation) &&
+                  studies.any((s) => !s.requiresPreparation))
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 14),
+                  child: MessageBanner(
+                    message: PatientMessages.preparationOrder(nombre),
+                    icon: Icons.route_rounded,
+                    style: MessageBannerStyle.tip,
+                  ),
+                ),
+
+              // Tips de reglas de negocio relevantes
+              if (tips.isNotEmpty) ...[
+                MessageTipsList(tips: tips),
+                const SizedBox(height: 6),
+              ],
+
+              // Estudios con preparaciones
               ...withPrep.map(
                 (s) => Padding(
                   padding: const EdgeInsets.only(bottom: 14),

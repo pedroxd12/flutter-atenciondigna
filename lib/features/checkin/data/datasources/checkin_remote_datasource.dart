@@ -35,6 +35,7 @@ class CheckinRemoteDataSource {
     required List<int> studyIds,
     required bool hasMedicalOrder,
     DateTime? sampleCollectedAt,
+    String? patientId,
   }) async {
     final res = await _api.dio.post<Map<String, dynamic>>(
       '/checkin/validacion-clinica',
@@ -43,6 +44,7 @@ class CheckinRemoteDataSource {
         'hasMedicalOrder': hasMedicalOrder,
         if (sampleCollectedAt != null)
           'sampleCollectedAt': sampleCollectedAt.toIso8601String(),
+        if (patientId != null) 'patientId': patientId,
       },
     );
     final j = res.data!;

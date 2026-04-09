@@ -3,25 +3,28 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../../../core/messages/patient_messages.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/widgets/message_banner.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../../services/data/salud_digna_catalog.dart';
 import '../../../services/presentation/pages/services_categories_page.dart'
     show iconForCategory, capitalizeWords;
 import '../../../services/presentation/providers/catalog_providers.dart';
 import '../../../studies/presentation/providers/studies_providers.dart';
+import '../../../tracking/presentation/providers/tracking_providers.dart';
 import '../../../waiting/presentation/providers/waiting_providers.dart';
 
 /// Pantalla "Inicio" — punto de entrada del paciente.
 ///
-/// Distribucion (de arriba hacia abajo):
-///   1. Saludo + perfil
-///   2. Sucursal Coyoacan (siempre visible — MVP)
-///   3. Cita activa (si existe) o tarjeta vacia
-///   4. Tarjeta destacada de paquetes/promociones
-///   5. Categorias rapidas (12 categorias del Excel)
-///   6. Acceso al carrito (si tiene servicios seleccionados)
-///   7. Estado en vivo de la espera (cuando aplica)
+/// Distribucion simplificada:
+///   1. Saludo personalizado + subtitulo guia
+///   2. Estado en vivo (si aplica) — lo mas importante arriba
+///   3. Cita activa o tarjeta vacia
+///   4. Tips contextuales segun estudios
+///   5. Paquetes destacados (carrusel)
+///   6. Categorias rapidas (max 8, grid de 4)
+///   7. Carrito (si tiene items)
 class HomeDashboardPage extends ConsumerWidget {
   const HomeDashboardPage({super.key});
 
@@ -30,150 +33,428 @@ class HomeDashboardPage extends ConsumerWidget {
     final patient = ref.watch(authControllerProvider).valueOrNull;
     final studiesAsync = ref.watch(todaysStudiesProvider);
     final waitAsync = ref.watch(waitStatusStreamProvider);
-    // Dispara la carga del catalogo desde el backend para que cuando el
-    // usuario entre a "Servicios" ya este disponible. El localCatalogProvider
-    // siempre devuelve algo (fallback hardcodeado si la red falla).
     ref.watch(remoteCatalogProvider);
     final catalog = ref.watch(localCatalogProvider);
     final cart = ref.watch(serviceCartProvider);
+
+    final nombre = patient?.firstName ?? 'paciente';
 
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 40),
           children: [
-            // 1. Saludo
+            // ── 1. Saludo personalizado ──
             Row(
               children: [
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Hola',
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: AppColors.textSecondary,
+                      Text(
+                        'Hola, $nombre',
+                        style: const TextStyle(
+                          fontSize: 26,
+                          fontWeight: FontWeight.w800,
                         ),
                       ),
-                      Text(
-                        patient?.firstName ?? 'paciente',
-                        style: const TextStyle(
-                          fontSize: 32,
-                          fontWeight: FontWeight.w800,
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Aqui puedes ver tu cita, tu turno y tus estudios.',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: AppColors.textSecondary,
+                          height: 1.3,
                         ),
                       ),
                     ],
                   ),
                 ),
+                const SizedBox(width: 12),
                 GestureDetector(
                   onTap: () => context.go('/profile'),
                   child: const CircleAvatar(
-                    radius: 26,
+                    radius: 24,
                     backgroundColor: AppColors.primarySoft,
                     child: Icon(
                       Icons.person,
                       color: AppColors.primary,
-                      size: 28,
+                      size: 26,
                     ),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 24),
 
-            // 2. Sucursal fija (Coyoacan)
-            const _BranchBanner(),
-            const SizedBox(height: 18),
-
-            // 3. Cita activa
-            studiesAsync.when(
-              loading: () => const _LoadingCard(),
-              error: (e, _) => const _NoAppointmentCard(),
-              data: (studies) {
-                if (studies.isEmpty) return const _NoAppointmentCard();
-                final main = studies.first;
-                return Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
+            // ── 1b. Tracking banner (prioridad maxima si hay visita activa) ──
+            Consumer(builder: (context, ref, _) {
+              final trackingAsync = ref.watch(trackingStatusProvider);
+              return trackingAsync.when(
+                loading: () => const SizedBox.shrink(),
+                error: (_, __) => const SizedBox.shrink(),
+                data: (status) {
+                  if (status == null || !status.hasActiveVisit) {
+                    return const SizedBox.shrink();
+                  }
+                  final current = status.currentStudy;
+                  final isCalled = current?.isCalled ?? false;
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 20),
+                    child: GestureDetector(
+                      onTap: () => context.push('/tracking'),
+                      child: Container(
+                        padding: const EdgeInsets.all(18),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: isCalled
+                                ? [const Color(0xFF16A34A), const Color(0xFF0F7A3F)]
+                                : [AppColors.primary, AppColors.primaryDark],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppColors.primary.withValues(alpha: 0.3),
+                              blurRadius: 12,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text(
-                              'Tu cita',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w800,
+                            Row(
+                              children: [
+                                Container(
+                                  width: 44,
+                                  height: 44,
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.2),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(
+                                    isCalled
+                                        ? Icons.notifications_active
+                                        : Icons.track_changes,
+                                    color: Colors.white,
+                                    size: 24,
+                                  ),
+                                ),
+                                const SizedBox(width: 14),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        isCalled
+                                            ? 'Es tu turno!'
+                                            : 'Tu visita esta en curso',
+                                        style: const TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.w800,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        current != null
+                                            ? '${current.name} · ${status.completedStudies}/${status.totalStudies} estudios'
+                                            : '${status.completedStudies} de ${status.totalStudies} estudios',
+                                        style: const TextStyle(
+                                          fontSize: 14,
+                                          color: Colors.white70,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const Icon(
+                                  Icons.chevron_right,
+                                  color: Colors.white,
+                                  size: 28,
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 14),
+                            // Progress bar
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(6),
+                              child: LinearProgressIndicator(
+                                value: status.progressPercent / 100,
+                                minHeight: 6,
+                                backgroundColor: Colors.white.withValues(alpha: 0.2),
+                                valueColor: const AlwaysStoppedAnimation<Color>(
+                                    Colors.white),
                               ),
                             ),
-                            const Spacer(),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: AppColors.primarySoft,
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: const Text(
-                                'PROXIMA',
-                                style: TextStyle(
-                                  color: AppColors.primary,
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 11,
-                                ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Ver mi tracking en vivo',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.white.withValues(alpha: 0.9),
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 14),
-                        Text(
-                          main.name,
-                          style: const TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  );
+                },
+              );
+            }),
+
+            // ── 2. Estado en vivo de la espera (arriba, prioridad) ──
+            waitAsync.when(
+              loading: () => const SizedBox.shrink(),
+              error: (_, __) => const SizedBox.shrink(),
+              data: (status) {
+                if (status.peopleAhead == 0 && !status.isYourTurn) {
+                  return const SizedBox.shrink();
+                }
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 20),
+                  child: GestureDetector(
+                    onTap: () => context.push('/waiting'),
+                    child: Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: status.isYourTurn
+                            ? AppColors.primary
+                            : AppColors.primarySoft,
+                        borderRadius: BorderRadius.circular(18),
+                        border: status.isYourTurn
+                            ? null
+                            : Border.all(
+                                color:
+                                    AppColors.primary.withValues(alpha: 0.25),
+                              ),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: status.isYourTurn
+                                  ? Colors.white.withValues(alpha: 0.2)
+                                  : AppColors.primary,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              status.isYourTurn
+                                  ? Icons.notifications_active
+                                  : Icons.schedule,
+                              color: Colors.white,
+                              size: 22,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          main.area,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            color: AppColors.textSecondary,
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  status.isYourTurn
+                                      ? 'Es tu turno!'
+                                      : '${status.peopleAhead} personas antes que tu',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w800,
+                                    color: status.isYourTurn
+                                        ? Colors.white
+                                        : AppColors.textPrimary,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  status.isYourTurn
+                                      ? 'Dirigete al area asignada'
+                                      : 'Toca para ver tu turno en vivo',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: status.isYourTurn
+                                        ? Colors.white70
+                                        : AppColors.textSecondary,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 18),
-                        FilledButton(
-                          onPressed: () => context.push('/checkin'),
-                          child: const Text('Ver mi cita'),
-                        ),
-                      ],
+                          Icon(
+                            Icons.chevron_right,
+                            color: status.isYourTurn
+                                ? Colors.white
+                                : AppColors.primary,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 );
               },
             ),
 
-            const SizedBox(height: 22),
+            // ── 3. Cita activa ──
+            studiesAsync.when(
+              loading: () => const _LoadingCard(),
+              error: (e, _) => const _NoAppointmentCard(),
+              data: (studies) {
+                if (studies.isEmpty) return const _NoAppointmentCard();
+                final main = studies.first;
+                final totalMin = studies.fold<double>(
+                  0,
+                  (acc, s) => acc + s.estimatedMinutes,
+                );
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(
+                                  Icons.event_available,
+                                  color: AppColors.primary,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 8),
+                                const Text(
+                                  'Tu proxima cita',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
+                                const Spacer(),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primarySoft,
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: Text(
+                                    '${studies.length} estudio${studies.length > 1 ? 's' : ''}',
+                                    style: const TextStyle(
+                                      color: AppColors.primary,
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 14),
+                            Text(
+                              main.name,
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            if (studies.length > 1) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                '+ ${studies.length - 1} estudio${studies.length - 1 > 1 ? 's' : ''} mas',
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                            ],
+                            const SizedBox(height: 6),
+                            Text(
+                              '${main.area} · ~${totalMin.toStringAsFixed(0)} min en total',
+                              style: const TextStyle(
+                                fontSize: 13,
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            SizedBox(
+                              width: double.infinity,
+                              child: FilledButton.icon(
+                                onPressed: () => context.push('/checkin'),
+                                icon: const Icon(Icons.qr_code_2, size: 20),
+                                label: const Text('Ver mi pase de entrada'),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
 
-            // 4. Paquetes destacados
-            const Row(
-              children: [
-                Text(
-                  'Paquetes destacados',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: AppColors.textSecondary,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
+                    // ── 4. Tips contextuales segun estudios ──
+                    Builder(builder: (context) {
+                      final tips =
+                          PatientMessages.tipsForStudies(nombre, studies);
+                      if (tips.isEmpty) {
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 12),
+                          child: MessageBanner(
+                            message: PatientMessages.stayAlert(nombre),
+                            icon: Icons.phone_android_rounded,
+                            style: MessageBannerStyle.info,
+                          ),
+                        );
+                      }
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 14),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'TIPS PARA TU VISITA',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.textSecondary,
+                                letterSpacing: 0.8,
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            MessageTipsList(tips: tips),
+                          ],
+                        ),
+                      );
+                    }),
+                  ],
+                );
+              },
             ),
-            const SizedBox(height: 8),
+
+            const SizedBox(height: 28),
+
+            // ── 5. Paquetes destacados ──
+            const Text(
+              'Paquetes destacados',
+              style: TextStyle(
+                fontSize: 15,
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Elige un paquete y agendamos por ti.',
+              style: TextStyle(
+                fontSize: 13,
+                color: AppColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 12),
             SizedBox(
               height: 170,
               child: ListView(
@@ -191,41 +472,42 @@ class HomeDashboardPage extends ConsumerWidget {
               ),
             ),
 
-            const SizedBox(height: 18),
+            const SizedBox(height: 28),
 
-            // 5. Categorias rapidas
+            // ── 6. Categorias rapidas (max 8) ──
             const Text(
               'Servicios por categoria',
               style: TextStyle(
-                fontSize: 14,
-                color: AppColors.textSecondary,
+                fontSize: 15,
+                color: AppColors.textPrimary,
                 fontWeight: FontWeight.w700,
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             GridView.count(
               crossAxisCount: 4,
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
-              mainAxisSpacing: 12,
-              crossAxisSpacing: 12,
-              childAspectRatio: 0.7,
+              mainAxisSpacing: 14,
+              crossAxisSpacing: 14,
+              childAspectRatio: 0.75,
               children: catalog
+                  .take(8)
                   .map((c) => _MiniCategory(category: c))
                   .toList(),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             Center(
               child: TextButton.icon(
                 onPressed: () => context.push('/services'),
-                icon: const Icon(Icons.arrow_forward),
-                label: const Text('Ver catalogo completo'),
+                icon: const Icon(Icons.arrow_forward, size: 18),
+                label: const Text('Ver todos los servicios'),
               ),
             ),
 
-            // 6. Carrito si hay items
+            // ── 7. Carrito flotante ──
             if (cart.totalItems > 0) ...[
-              const SizedBox(height: 14),
+              const SizedBox(height: 16),
               GestureDetector(
                 onTap: () => context.push('/services/cart'),
                 child: Container(
@@ -246,7 +528,7 @@ class HomeDashboardPage extends ConsumerWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              '${cart.totalItems} servicios en tu carrito',
+                              '${cart.totalItems} servicio${cart.totalItems > 1 ? 's' : ''} en tu carrito',
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 15,
@@ -269,78 +551,6 @@ class HomeDashboardPage extends ConsumerWidget {
                 ),
               ),
             ],
-
-            // 7. Estado en vivo de la espera
-            waitAsync.when(
-              loading: () => const SizedBox.shrink(),
-              error: (_, __) => const SizedBox.shrink(),
-              data: (status) {
-                if (status.peopleAhead == 0 && !status.isYourTurn) {
-                  return const SizedBox.shrink();
-                }
-                return Padding(
-                  padding: const EdgeInsets.only(top: 18),
-                  child: GestureDetector(
-                    onTap: () => context.push('/waiting'),
-                    child: Container(
-                      padding: const EdgeInsets.all(18),
-                      decoration: BoxDecoration(
-                        color: AppColors.primarySoft,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: AppColors.primary.withValues(alpha: 0.3),
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 48,
-                            height: 48,
-                            decoration: const BoxDecoration(
-                              color: AppColors.primary,
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.schedule,
-                              color: Colors.white,
-                            ),
-                          ),
-                          const SizedBox(width: 14),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  status.isYourTurn
-                                      ? 'Es tu turno'
-                                      : '${status.peopleAhead} personas adelante',
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                const Text(
-                                  'Toca para ver tu turno',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    color: AppColors.textSecondary,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const Icon(
-                            Icons.chevron_right,
-                            color: AppColors.primary,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
           ],
         ),
       ),
@@ -348,7 +558,6 @@ class HomeDashboardPage extends ConsumerWidget {
   }
 
   /// Selecciona 4 items destacados para mostrar en el carrusel del home.
-  /// Toma el primer "paquete" de cada categoria que tenga, y si no, el primero.
   List<(String, String, double?, int)> _featuredPackages(
     List<CatalogCategory> cats,
   ) {
@@ -377,57 +586,6 @@ class HomeDashboardPage extends ConsumerWidget {
   }
 }
 
-class _BranchBanner extends StatelessWidget {
-  const _BranchBanner();
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [AppColors.primary, AppColors.primaryDark],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.18),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const Icon(Icons.location_on, color: Colors.white),
-          ),
-          const SizedBox(width: 12),
-          const Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Sucursal Coyoacan',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                SizedBox(height: 2),
-                Text(
-                  'Av. Universidad 1330 · 7:00 - 20:00',
-                  style: TextStyle(color: Colors.white70, fontSize: 12),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 class _PackageCard extends StatelessWidget {
   const _PackageCard({

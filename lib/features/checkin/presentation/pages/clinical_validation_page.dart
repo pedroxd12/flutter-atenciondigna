@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../auth/presentation/providers/auth_providers.dart';
+import '../../../studies/presentation/providers/studies_providers.dart';
 import '../../domain/entities/checkin_pass.dart';
 import '../providers/checkin_providers.dart';
 
@@ -27,13 +29,30 @@ class _ClinicalValidationPageState
       _result = null;
     });
 
+    // Obtener los studyIds reales de la reservacion activa del paciente
+    final studies = await ref.read(todaysStudiesProvider.future);
+    final studyIds = studies.map((s) => s.id).toList();
+
+    if (studyIds.isEmpty) {
+      setState(() {
+        _result = const ClinicalValidation(
+          status: ClinicalValidationStatus.ok,
+          message: 'No tienes estudios programados para hoy.',
+        );
+        _validating = false;
+      });
+      return;
+    }
+
+    final patientId = ref.read(currentPatientIdProvider);
     final remote = ref.read(checkinRemoteProvider);
     final res = await remote.validateClinicalRules(
-      studyIds: const [2, 5, 6],
+      studyIds: studyIds,
       hasMedicalOrder: _hasMedicalOrder,
       sampleCollectedAt: _sampleRecent
           ? DateTime.now().subtract(const Duration(minutes: 30))
           : DateTime.now().subtract(const Duration(hours: 3)),
+      patientId: patientId,
     );
 
     setState(() {
@@ -50,8 +69,12 @@ class _ClinicalValidationPageState
         padding: const EdgeInsets.all(20),
         children: [
           const Text(
-            'Confirma estos datos antes de tu check-in. Si algo falla, recepcion no podra registrarte.',
-            style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
+            'Solo necesitamos confirmar un par de cosas antes de registrarte. Es rapido!',
+            style: TextStyle(
+              fontSize: 14,
+              color: AppColors.textSecondary,
+              height: 1.4,
+            ),
           ),
           const SizedBox(height: 20),
           Card(
@@ -101,7 +124,7 @@ class _ClinicalValidationPageState
             const SizedBox(height: 20),
             _ValidationResult(
               result: _result!,
-              onContinue: () => context.go('/home/waiting'),
+              onContinue: () => context.go('/studies'),
             ),
           ],
         ],

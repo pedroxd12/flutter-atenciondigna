@@ -13,7 +13,6 @@ class HomeShell extends StatelessWidget {
   static const _items = [
     _NavItem(Icons.home_outlined, Icons.home_rounded, 'Inicio'),
     _NavItem(Icons.science_outlined, Icons.science_rounded, 'Estudios'),
-    _NavItem(Icons.access_time, Icons.access_time_filled, 'Espera'),
     _NavItem(Icons.folder_outlined, Icons.folder_rounded, 'Resultados'),
     _NavItem(Icons.person_outline, Icons.person_rounded, 'Perfil'),
   ];
